@@ -115,9 +115,13 @@ interface SignalAnalysis {
 export default function BotInterface() {
   const { toast } = useToast();
   const wsRef = useRef<WebSocket | null>(null);
+  const analysisTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   const [isRunning, setIsRunning] = useState(false);
   const [isTrading, setIsTrading] = useState(false);
   const [lastTradeTime, setLastTradeTime] = useState(0);
+  const [lastAnalysisTime, setLastAnalysisTime] = useState(0);
+  const [analysisCount, setAnalysisCount] = useState(0);
   
   const [config, setConfig] = useState<BotConfig>({
     token: '',
@@ -168,6 +172,11 @@ export default function BotInterface() {
     "wss://ws.derivws.com/websockets/v3"
   ];
 
+  // Constantes de controle
+  const MIN_TRADE_INTERVAL = 120000; // 2 minutos entre trades
+  const MIN_ANALYSIS_INTERVAL = 30000; // 30 segundos entre análises
+  const MAX_ANALYSIS_PER_MINUTE = 2; // Máximo 2 análises por minuto
+
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     const logMessage = `[${timestamp}] ${message}`;
@@ -179,6 +188,15 @@ export default function BotInterface() {
       logsRef.current.scrollTop = logsRef.current.scrollHeight;
     }
   }, [logs]);
+
+  // Reset analysis count every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAnalysisCount(0);
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const connectWebSocket = (token: string, endpointIndex = 0): WebSocket | null => {
     if (endpointIndex >= WEBSOCKET_ENDPOINTS.length) {
@@ -294,18 +312,43 @@ export default function BotInterface() {
 
   const processTick = (tick: WebSocketMessage['tick'], ws: WebSocket) => {
     try {
-      if (!tick || !tick.quote) {
-        addLog("⚠️ Tick inválido recebido");
+      if (!tick || !tick.quote || !isRunning) {
         return;
       }
       
       const price = parseFloat(tick.quote.toString());
       const timestamp = Math.floor(Date.now() / 1000);
       const volume = tick.volume || 1;
+      const now = Date.now();
       
-      // Evitar trades muito frequentes
-      const timeSinceLastTrade = Date.now() - lastTradeTime;
-      if (timeSinceLastTrade < 60000 && lastTradeTime > 0) return;
+      // Controles de tempo rigorosos
+      const timeSinceLastTrade = now - lastTradeTime;
+      const timeSinceLastAnalysis = now - lastAnalysisTime;
+      
+      // Se está em trading, não analisar
+      if (isTrading) {
+        return;
+      }
+      
+      // Se trade recente, aguardar
+      if (timeSinceLastTrade < MIN_TRADE_INTERVAL && lastTradeTime > 0) {
+        const remainingTime = Math.ceil((MIN_TRADE_INTERVAL - timeSinceLastTrade) / 1000);
+        if (remainingTime % 30 === 0) { // Log a cada 30 segundos
+          addLog(`⏳ Aguardando ${remainingTime}s para próxima análise...`);
+        }
+        return;
+      }
+      
+      // Se análise muito recente, aguardar
+      if (timeSinceLastAnalysis < MIN_ANALYSIS_INTERVAL) {
+        return;
+      }
+      
+      // Se muitas análises por minuto, aguardar
+      if (analysisCount >= MAX_ANALYSIS_PER_MINUTE) {
+        addLog(`⏳ Limite de análises por minuto atingido. Aguardando...`);
+        return;
+      }
       
       // Adicionar dados de preço
       const newPriceData = [...priceData, { high: price, low: price, close: price, timestamp }];
@@ -324,20 +367,27 @@ export default function BotInterface() {
       setStats(prev => ({ ...prev, dataCount: newPriceData.length }));
       
       // Analisar sinais se temos dados suficientes
-      if (newPriceData.length >= Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods) && isRunning && !isTrading) {
+      if (newPriceData.length >= Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods)) {
+        setLastAnalysisTime(now);
+        setAnalysisCount(prev => prev + 1);
+        
         const analysis = analyzeSignals(newPriceData, newVolumeData);
         
-        if (analysis && analysis.finalSignal !== "NEUTRO" && analysis.confidence >= config.minConfidence) {
+        if (analysis) {
           updateSignalsDisplay(analysis.signals, analysis.confidence);
           
-          addLog(`🎯 SINAL: ${analysis.finalSignal} (${analysis.confidence}%)`);
-          toast({
-            title: "🎯 Sinal detectado!",
-            description: `${analysis.finalSignal} com ${analysis.confidence}% de confiança`,
-          });
-          
-          setIsTrading(true);
-          executeTrade(analysis.finalSignal, ws);
+          if (analysis.finalSignal !== "NEUTRO" && analysis.confidence >= config.minConfidence) {
+            addLog(`🎯 SINAL: ${analysis.finalSignal} (${analysis.confidence}%)`);
+            toast({
+              title: "🎯 Sinal detectado!",
+              description: `${analysis.finalSignal} com ${analysis.confidence}% de confiança`,
+            });
+            
+            setIsTrading(true);
+            executeTrade(analysis.finalSignal, ws);
+          } else {
+            addLog(`📊 Análise: ${analysis.finalSignal} (${analysis.confidence}%) - Aguardando sinal melhor...`);
+          }
         }
       }
     } catch (error) {
@@ -479,6 +529,7 @@ export default function BotInterface() {
   const executeTrade = (signal: string, ws: WebSocket) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       addLog("❌ WebSocket não conectado!");
+      setIsTrading(false);
       return;
     }
     
@@ -649,6 +700,10 @@ export default function BotInterface() {
     setPriceData([]);
     setVolumeData([]);
     setIsTrading(false);
+    setLastTradeTime(0);
+    setLastAnalysisTime(0);
+    setAnalysisCount(0);
+    
     setStats(prev => ({ 
       ...prev, 
       martingaleLevel: 0,
@@ -661,6 +716,7 @@ export default function BotInterface() {
     }));
 
     addLog(`🚀 Iniciando Bot - Par: ${config.symbol} | Entrada: ${config.stake} | Martingale: ${config.martingale}x`);
+    addLog(`⚙️ Configurações: Min Confiança: ${config.minConfidence}% | Duração: ${config.duration}min`);
     setStats(prev => ({ ...prev, status: "🔄 Conectando..." }));
     
     toast({
@@ -677,6 +733,10 @@ export default function BotInterface() {
   const handleStop = () => {
     setIsRunning(false);
     setIsTrading(false);
+    
+    if (analysisTimeoutRef.current) {
+      clearTimeout(analysisTimeoutRef.current);
+    }
     
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
@@ -919,6 +979,18 @@ export default function BotInterface() {
                 <div className="font-bold text-indigo-600">${stats.currentStake}</div>
               </div>
             </div>
+            
+            {/* Alert para controles de tempo */}
+            {isRunning && (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Bot configurado com análise controlada: máximo {MAX_ANALYSIS_PER_MINUTE} análises/min, 
+                  intervalo mínimo de {MIN_TRADE_INTERVAL/60000} min entre trades.
+                </AlertDescription>
+              </Alert>
+            )}
+            
             <div className="flex gap-2">
               <Button 
                 onClick={handleStart} 
