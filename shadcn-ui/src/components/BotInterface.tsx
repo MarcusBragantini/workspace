@@ -189,10 +189,10 @@ export default function BotInterface() {
     "wss://ws.derivws.com/websockets/v3"
   ];
 
-  // Constantes de controle
-  const MIN_TRADE_INTERVAL = 120000; // 2 minutos entre trades
-  const MIN_ANALYSIS_INTERVAL = 30000; // 30 segundos entre análises
-  const MAX_ANALYSIS_PER_MINUTE = 2; // Máximo 2 análises por minuto
+  // Constantes de controle - CORRIGIDAS para permitir coleta de dados
+  const MIN_TRADE_INTERVAL = 30000; // 30 segundos entre trades (era 2 minutos)
+  const MIN_ANALYSIS_INTERVAL = 5000; // 5 segundos entre análises (era 30 segundos)
+  const MAX_ANALYSIS_PER_MINUTE = 10; // Máximo 10 análises por minuto (era 2)
   const MAX_DEVICES = 2; // Máximo 2 dispositivos
 
   // Gerar device fingerprint
@@ -407,8 +407,8 @@ export default function BotInterface() {
         
         if (!isRunning) {
           setIsRunning(true);
-          addLog("✅ Bot ativo e analisando!");
-          setStats(prev => ({ ...prev, status: "📊 Analisando..." }));
+          addLog("✅ Bot ativo e coletando dados!");
+          setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
         }
       }
 
@@ -461,20 +461,42 @@ export default function BotInterface() {
       const volume = tick.volume || 1;
       const now = Date.now();
       
-      // Controles de tempo rigorosos
+      // SEMPRE adicionar dados de preço primeiro (sem restrições)
+      const newPriceData = [...priceData, { high: price, low: price, close: price, timestamp }];
+      const newVolumeData = [...volumeData, volume];
+      
+      // Manter apenas dados necessários
+      const maxDataPoints = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods) * 2;
+      if (newPriceData.length > maxDataPoints) {
+        setPriceData(newPriceData.slice(-maxDataPoints));
+        setVolumeData(newVolumeData.slice(-maxDataPoints));
+      } else {
+        setPriceData(newPriceData);
+        setVolumeData(newVolumeData);
+      }
+      
+      // Atualizar contador de dados SEMPRE
+      setStats(prev => ({ ...prev, dataCount: newPriceData.length }));
+      
+      // Log de debug para mostrar progresso
+      if (newPriceData.length % 10 === 0) {
+        addLog(`📈 Dados coletados: ${newPriceData.length} | Preço atual: ${price.toFixed(4)}`);
+      }
+      
+      // Controles de tempo para ANÁLISE (não para coleta de dados)
       const timeSinceLastTrade = now - lastTradeTime;
       const timeSinceLastAnalysis = now - lastAnalysisTime;
       
-      // Se está em trading, não analisar
+      // Se está em trading, não analisar (mas continua coletando dados)
       if (isTrading) {
         return;
       }
       
-      // Se trade recente, aguardar
+      // Se trade recente, aguardar para próximo trade
       if (timeSinceLastTrade < MIN_TRADE_INTERVAL && lastTradeTime > 0) {
         const remainingTime = Math.ceil((MIN_TRADE_INTERVAL - timeSinceLastTrade) / 1000);
-        if (remainingTime % 30 === 0) { // Log a cada 30 segundos
-          addLog(`⏳ Aguardando ${remainingTime}s para próxima análise...`);
+        if (remainingTime % 10 === 0) { // Log a cada 10 segundos
+          addLog(`⏳ Aguardando ${remainingTime}s para próximo trade...`);
         }
         return;
       }
@@ -490,26 +512,13 @@ export default function BotInterface() {
         return;
       }
       
-      // Adicionar dados de preço
-      const newPriceData = [...priceData, { high: price, low: price, close: price, timestamp }];
-      const newVolumeData = [...volumeData, volume];
-      
-      // Manter apenas dados necessários
-      const maxDataPoints = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods) * 2;
-      if (newPriceData.length > maxDataPoints) {
-        setPriceData(newPriceData.slice(-maxDataPoints));
-        setVolumeData(newVolumeData.slice(-maxDataPoints));
-      } else {
-        setPriceData(newPriceData);
-        setVolumeData(newVolumeData);
-      }
-      
-      setStats(prev => ({ ...prev, dataCount: newPriceData.length }));
-      
       // Analisar sinais se temos dados suficientes
       if (newPriceData.length >= Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods)) {
         setLastAnalysisTime(now);
         setAnalysisCount(prev => prev + 1);
+        
+        addLog(`🔍 Analisando sinais... (${analysisCount + 1}/${MAX_ANALYSIS_PER_MINUTE})`);
+        setStats(prev => ({ ...prev, status: "🔍 Analisando sinais..." }));
         
         const analysis = analyzeSignals(newPriceData, newVolumeData);
         
@@ -527,8 +536,14 @@ export default function BotInterface() {
             executeTrade(analysis.finalSignal, ws);
           } else {
             addLog(`📊 Análise: ${analysis.finalSignal} (${analysis.confidence}%) - Aguardando sinal melhor...`);
+            setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
           }
         }
+      } else {
+        // Mostrar progresso da coleta
+        const needed = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods);
+        const progress = Math.round((newPriceData.length / needed) * 100);
+        setStats(prev => ({ ...prev, status: `📊 Coletando dados... ${progress}%` }));
       }
     } catch (error) {
       const err = error as Error;
@@ -773,7 +788,7 @@ export default function BotInterface() {
       handleStop();
     } else {
       addLog("🔄 Aguardando próximo sinal...");
-      setStats(prev => ({ ...prev, status: "📊 Analisando..." }));
+      setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
       setIsTrading(false);
       setLastTradeTime(Date.now());
     }
@@ -862,12 +877,14 @@ export default function BotInterface() {
       total: 0,
       wins: 0,
       losses: 0,
-      accuracy: 0
+      accuracy: 0,
+      dataCount: 0
     }));
 
     addLog(`🚀 Iniciando Bot - Par: ${config.symbol} | Entrada: ${config.stake} | Martingale: ${config.martingale}x`);
     addLog(`⚙️ Configurações: Min Confiança: ${config.minConfidence}% | Duração: ${config.duration}min`);
     addLog(`📱 Dispositivo ${deviceCount}/${MAX_DEVICES} autorizado`);
+    addLog(`⏱️ Timeouts: ${MIN_TRADE_INTERVAL/1000}s entre trades, ${MIN_ANALYSIS_INTERVAL/1000}s entre análises`);
     setStats(prev => ({ ...prev, status: "🔄 Conectando..." }));
     
     toast({
@@ -1176,8 +1193,8 @@ export default function BotInterface() {
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  Bot configurado com análise controlada: máximo {MAX_ANALYSIS_PER_MINUTE} análises/min, 
-                  intervalo mínimo de {MIN_TRADE_INTERVAL/60000} min entre trades.
+                  Bot otimizado: máximo {MAX_ANALYSIS_PER_MINUTE} análises/min, 
+                  intervalo de {MIN_TRADE_INTERVAL/1000}s entre trades, {MIN_ANALYSIS_INTERVAL/1000}s entre análises.
                 </AlertDescription>
               </Alert>
             )}
