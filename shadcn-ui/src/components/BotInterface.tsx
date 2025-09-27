@@ -97,7 +97,7 @@ interface PriceData {
 }
 
 export default function BotInterface() {
-  const { toast } = useToast();
+  const { toast } = useToast() || { toast: () => {} };
   
   // ===== ESTADOS DE LICENÇA =====
   const [isLicenseValid, setIsLicenseValid] = useState(false);
@@ -128,11 +128,11 @@ export default function BotInterface() {
     symbol: 'R_10',
     stopWin: 3,
     stopLoss: -5,
-    minConfidence: 75,
-    mhiPeriods: 20,
-    emaFast: 8,
-    emaSlow: 18,
-    rsiPeriods: 10
+    minConfidence: 20,
+    mhiPeriods: 14,
+    emaFast: 9,
+    emaSlow: 21,
+    rsiPeriods: 14
   });
 
   const [stats, setStats] = useState<BotStats>({
@@ -290,11 +290,58 @@ export default function BotInterface() {
     setLogs(prev => [...prev.slice(-49), logMessage]);
   };
 
+  const debugLog = (message: string, data?: any) => {
+    // Função de debug simplificada
+    try {
+      console.log(`[DEBUG] ${message}`, data || '');
+    } catch (error) {
+      // Ignorar erros de console
+    }
+  };
+
+  const calculateNextStake = () => {
+    const newStake = stats.currentStake * config.martingale;
+    const balance = stats.balance || 100;
+    
+    const limits = {
+      maxMartingale: config.stake * Math.pow(config.martingale, 3),
+      maxBalancePercent: balance * 0.3,
+      minStake: 1
+    };
+    
+    let finalStake = Math.min(newStake, limits.maxMartingale, limits.maxBalancePercent);
+    finalStake = Math.max(finalStake, limits.minStake);
+    finalStake = Math.round(finalStake);
+    
+    return finalStake;
+  };
+
+  const validateMartingale = (newStake: number) => {
+    const balance = stats.balance || 100;
+    
+    if (stats.martingaleLevel >= maxMartingale) {
+      addLog("🚫 Máximo de 3 martingales atingido!");
+      return false;
+    }
+    
+    if (newStake > balance * 0.5) {
+      addLog(`⚠️ Stake muito alto para o saldo!`);
+      return false;
+    }
+    
+    return true;
+  };
+
   useEffect(() => {
     if (logsRef.current) {
       logsRef.current.scrollTop = logsRef.current.scrollHeight;
     }
   }, [logs]);
+
+  // Monitorar mudanças no estado isRunning
+  useEffect(() => {
+    addLog(`🔄 Estado isRunning mudou para: ${isRunning}`);
+  }, [isRunning]);
 
   const connectWebSocket = (token: string, endpointIndex = 0): WebSocket | null => {
     if (endpointIndex >= WEBSOCKET_ENDPOINTS.length) {
@@ -318,6 +365,7 @@ export default function BotInterface() {
       };
 
       ws.onclose = (event) => {
+        addLog(`🔌 WebSocket fechado - wasClean: ${event.wasClean}, isRunning: ${isRunning}`);
         if (!event.wasClean && isRunning) {
           addLog("🔴 Conexão perdida. Reconectando...");
           setTimeout(() => {
@@ -363,14 +411,16 @@ export default function BotInterface() {
         setStats(prev => ({ ...prev, balance }));
         addLog(`💰 Saldo: $${balance} USD`);
         
-        if (!isRunning) {
-          setIsRunning(true);
-          addLog("✅ Bot ativo e analisando!");
-          setStats(prev => ({ ...prev, status: "📊 Analisando..." }));
-        }
+            if (!isRunning) {
+              setIsRunning(true);
+              addLog("✅ Bot ativo e analisando!");
+              setStats(prev => ({ ...prev, status: "📊 Analisando..." }));
+              addLog(`🔄 Estado alterado: Bot agora está RODANDO`);
+            }
       }
 
       if (data.msg_type === "tick") {
+        addLog(`📈 Tick recebido: ${data.tick?.quote || 'N/A'}`);
         processTick(data.tick, ws);
       }
 
@@ -429,20 +479,55 @@ export default function BotInterface() {
         
         setStats(prev => ({ ...prev, dataCount: trimmedData.length }));
         
-        if (trimmedData.length >= Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods) && isRunning && !isTrading) {
-          const analysis = analyzeSignals(trimmedData, volumeData);
+        // Log da condição de análise
+        const requiredData = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods);
+        const canAnalyze = trimmedData.length >= requiredData && isRunning && !isTrading;
+        
+        addLog(`🔍 Condição análise: dados=${trimmedData.length}/${requiredData}, isRunning=${isRunning}, isTrading=${isTrading}, podeAnalisar=${canAnalyze}`);
+        
+        if (canAnalyze) {
+          addLog("🎯 INICIANDO ANÁLISE DE SINAIS");
+          try {
+            const analysis = analyzeSignals(trimmedData, volumeData);
           
-          if (analysis && analysis.finalSignal !== "NEUTRO" && analysis.confidence >= config.minConfidence) {
+          // Log sempre que há análise
+          if (analysis) {
+            addLog(`📊 Análise: ${analysis.finalSignal} | Confiança: ${analysis.confidence}% | Mín: ${config.minConfidence}%`);
             updateSignalsDisplay(analysis.signals, analysis.confidence);
             
-            addLog(`🎯 SINAL: ${analysis.finalSignal} (${analysis.confidence}%)`);
-            toast({
-              title: "🎯 Sinal detectado!",
-              description: `${analysis.finalSignal} com ${analysis.confidence}% de confiança`,
-            });
-            
-            setIsTrading(true);
-            executeTrade(analysis.finalSignal, ws);
+            if (analysis.finalSignal !== "NEUTRO" && analysis.confidence >= config.minConfidence) {
+              addLog(`🎯 SINAL EXECUTÁVEL: ${analysis.finalSignal} (${analysis.confidence}%)`);
+              toast({
+                title: "🎯 Sinal detectado!",
+                description: `${analysis.finalSignal} com ${analysis.confidence}% de confiança`,
+              });
+              
+              setIsTrading(true);
+              executeTrade(analysis.finalSignal, ws);
+            } else {
+              // Log detalhado do porquê não executou
+              if (analysis.finalSignal === "NEUTRO") {
+                addLog(`⚠️ Sinal NEUTRO - não executando`);
+              } else {
+                addLog(`⚠️ Confiança baixa: ${analysis.confidence}% < ${config.minConfidence}%`);
+              }
+            }
+          } else {
+            addLog(`❌ Análise falhou - dados insuficientes`);
+          }
+          } catch (error) {
+            const err = error as Error;
+            addLog(`❌ ERRO na análise: ${err.message}`);
+            console.error('Erro na análise:', err);
+          }
+        } else {
+          // Log das condições que impedem análise
+          if (trimmedData.length < Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods)) {
+            addLog(`⏳ Aguardando dados: ${trimmedData.length}/${Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods)}`);
+          } else if (!isRunning) {
+            addLog(`⏹ Bot não está rodando`);
+          } else if (isTrading) {
+            addLog(`🔄 Já executando trade`);
           }
         }
         
@@ -467,12 +552,14 @@ export default function BotInterface() {
         return null;
       }
       
-      // MHI Calculation
+      // MHI Calculation (lógica exata do HTML)
       const mhiData = prices.slice(-config.mhiPeriods);
-      let highSum = 0, lowSum = 0;
+      
+      let highSum = 0, lowSum = 0, closeSum = 0;
       mhiData.forEach(candle => {
         highSum += candle.high;
         lowSum += candle.low;
+        closeSum += candle.close;
       });
       
       const avgHigh = highSum / config.mhiPeriods;
@@ -486,7 +573,7 @@ export default function BotInterface() {
         mhiSignal = "PUT";
       }
       
-      // EMA Calculation
+      // EMA Calculation (lógica exata do HTML)
       const emaFast = calculateEMA(prices, config.emaFast);
       const emaSlow = calculateEMA(prices, config.emaSlow);
       
@@ -497,7 +584,7 @@ export default function BotInterface() {
         trendSignal = "PUT";
       }
       
-      // RSI Calculation
+      // RSI Calculation (lógica exata do HTML)
       const rsi = calculateRSI(prices, config.rsiPeriods);
       let rsiSignal = "NEUTRO";
       if (rsi < 30) {
@@ -516,6 +603,10 @@ export default function BotInterface() {
       
       const finalSignal = calculateFinalSignal(signals);
       const confidence = calculateConfidence(signals, rsi);
+      
+      // Log detalhado dos cálculos
+      addLog(`🔍 Cálculos: MHI=${mhiSignal}, Trend=${trendSignal}, EMA=${signals.ema}, RSI=${rsiSignal} (${rsi.toFixed(1)})`);
+      addLog(`🎯 Resultado: ${finalSignal} | Confiança: ${confidence}%`);
       
       return {
         signals: { ...signals, final: finalSignal },
@@ -593,14 +684,15 @@ export default function BotInterface() {
   const executeTrade = (signal: string, ws: WebSocket) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       addLog("❌ WebSocket não conectado!");
+      setIsTrading(false);
       return;
     }
     
-    addLog(`🚀 EXECUTANDO: ${signal} - $${currentStake}`);
+    addLog(`🚀 EXECUTANDO: ${signal} - $${stats.currentStake}`);
     
     const proposal = {
       proposal: 1,
-      amount: currentStake,
+      amount: stats.currentStake,
       basis: "stake",
       contract_type: signal,
       currency: "USD",
@@ -609,8 +701,9 @@ export default function BotInterface() {
       symbol: config.symbol
     };
 
+    // debugLog("Enviando proposta:", proposal);
     ws.send(JSON.stringify(proposal));
-    setStats(prev => ({ ...prev, status: `🚀 ${signal} - $${currentStake}` }));
+    setStats(prev => ({ ...prev, status: `🚀 ${signal} - $${stats.currentStake}` }));
   };
 
   const handleTradeResult = (contract: any) => {
@@ -628,9 +721,9 @@ export default function BotInterface() {
       accuracy: prev.total > 0 ? ((tradeProfit >= 0 ? prev.wins + 1 : prev.wins) / (prev.total + 1)) * 100 : 0
     }));
 
-    addTradeToHistory(contract.contract_id, finalSignal, confidence, currentStake, martingaleLevel, tradeProfit >= 0 ? "WIN" : "LOSS", tradeProfit);
+    addTradeToHistory(contract.contract_id, finalSignal, confidence, stats.currentStake, stats.martingaleLevel, tradeProfit >= 0 ? "WIN" : "LOSS", tradeProfit);
 
-    addLog(`📊 Resultado: ${tradeProfit >= 0 ? 'WIN' : 'LOSS'} | Entrada: ${currentStake} | Lucro: ${tradeProfit.toFixed(2)} USD`);
+    addLog(`📊 Resultado: ${tradeProfit >= 0 ? 'WIN' : 'LOSS'} | Entrada: ${stats.currentStake} | Lucro: ${tradeProfit.toFixed(2)} USD`);
     
     if (tradeProfit >= 0) {
       toast({
@@ -645,35 +738,40 @@ export default function BotInterface() {
       });
     }
 
-    // Martingale logic
+    // Martingale logic melhorada
     if (tradeProfit < 0) {
-      const newMartingaleLevel = martingaleLevel + 1;
-      if (newMartingaleLevel < maxMartingale) {
-        const newStake = currentStake * config.martingale;
+      const newMartingaleLevel = stats.martingaleLevel + 1;
+      addLog(`🔴 Perda ${newMartingaleLevel}/${maxMartingale}`);
+      
+      const newStake = calculateNextStake();
+      
+      if (validateMartingale(newStake)) {
         setCurrentStake(newStake);
         setMartingaleLevel(newMartingaleLevel);
-        addLog(`📈 Nova entrada: $${newStake}`);
+        setStats(prev => ({ ...prev, martingaleLevel: newMartingaleLevel, currentStake: newStake }));
+        addLog(`📈 Nova entrada: $${newStake} ($${newStake/config.martingale} × ${config.martingale})`);
       } else {
         setMartingaleLevel(0);
         setCurrentStake(config.stake);
-        addLog("🔄 Martingale resetado");
+        setStats(prev => ({ ...prev, martingaleLevel: 0, currentStake: config.stake }));
+        addLog("🔄 Martingale resetado (limite máximo atingido)");
       }
     } else {
       setMartingaleLevel(0);
       setCurrentStake(config.stake);
+      setStats(prev => ({ ...prev, martingaleLevel: 0, currentStake: config.stake }));
       addLog(`✅ WIN! Reset para entrada inicial: $${config.stake}`);
     }
 
-    setStats(prev => ({ ...prev, martingaleLevel, currentStake }));
-
     // Check stop conditions
-    const newProfit = profit + tradeProfit;
+    const newProfit = stats.profit + tradeProfit;
     if (newProfit >= config.stopWin) {
       addLog("🎯 STOP WIN atingido! Parando bot.");
       toast({
         title: "🎯 Stop Win atingido!",
         description: `Lucro total: ${newProfit.toFixed(2)}`,
       });
+      addLog("🛑 STOP WIN - Parando bot");
       handleStop();
     } else if (newProfit <= config.stopLoss) {
       addLog("💀 STOP LOSS atingido! Parando bot.");
@@ -682,6 +780,7 @@ export default function BotInterface() {
         description: `Prejuízo: ${newProfit.toFixed(2)}`,
         variant: "destructive"
       });
+      addLog("🛑 STOP LOSS - Parando bot");
       handleStop();
     } else {
       addLog("🔄 Aguardando próximo sinal...");
@@ -706,7 +805,10 @@ export default function BotInterface() {
   };
 
   const handleStart = () => {
+    addLog("🚀 INICIANDO BOT - Verificando estado atual");
+    
     if (isRunning) {
+      addLog("⚠️ Bot já está em execução!");
       toast({
         title: "Bot já está em execução!",
         variant: "destructive"
@@ -716,6 +818,7 @@ export default function BotInterface() {
 
     const token = config.token.trim();
     if (!token) {
+      addLog("❌ Token não fornecido");
       toast({
         title: "Token da Deriv é obrigatório!",
         description: "Digite seu token para conectar",
@@ -723,6 +826,8 @@ export default function BotInterface() {
       });
       return;
     }
+    
+    addLog(`🔑 Token fornecido: ${token.slice(0, 10)}...`);
 
     // Reset data
     setPriceData([]);
@@ -757,10 +862,14 @@ export default function BotInterface() {
     const ws = connectWebSocket(token);
     if (ws) {
       wsRef.current = ws;
+      addLog("🌐 WebSocket conectado - Aguardando autenticação...");
+    } else {
+      addLog("❌ Falha ao conectar WebSocket");
     }
   };
 
   const handleStop = () => {
+    addLog("🛑 PARANDO BOT - Estado mudando para false");
     setIsRunning(false);
     setIsTrading(false);
     
@@ -787,6 +896,57 @@ export default function BotInterface() {
       title: "Bot parado",
       description: "Sistema interrompido com sucesso",
     });
+  };
+
+  const handleTest = () => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      toast({
+        title: "Conecte o bot primeiro!",
+        description: "Conecte o bot antes de fazer testes.",
+        variant: "destructive"
+      });
+      return;
+    }
+    addLog("🧪 TESTE FORÇADO - CALL");
+    toast({
+      title: "Executando teste de sinal CALL...",
+      description: "Teste de execução manual",
+    });
+    setIsTrading(true);
+    executeTrade("CALL", wsRef.current);
+  };
+
+  const handleResetMartingale = () => {
+    setMartingaleLevel(0);
+    setCurrentStake(config.stake);
+    setStats(prev => ({ ...prev, martingaleLevel: 0, currentStake: config.stake }));
+    addLog("🔄 Martingale resetado manualmente");
+    toast({
+      title: "Martingale resetado",
+      description: "Reset para entrada inicial",
+    });
+  };
+
+  const handleAnalysis = () => {
+    if (priceData.length < 10) {
+      addLog("📊 Coletando dados...");
+      toast({
+        title: "Coletando dados...",
+        description: "Aguardando mais dados para análise",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const analysis = analyzeSignals(priceData, volumeData);
+    if (analysis) {
+      addLog("📈 ANÁLISE COMPLETA DISPONÍVEL");
+      addLog(`🎯 Sinal: ${analysis.finalSignal} | Confiança: ${analysis.confidence}%`);
+      toast({
+        title: "Análise completa disponível",
+        description: `Sinal: ${analysis.finalSignal} | Confiança: ${analysis.confidence}%`,
+      });
+    }
   };
 
   const handleHelp = () => {
@@ -1085,6 +1245,67 @@ export default function BotInterface() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Configurações Avançadas de Trading</CardTitle>
+            <CardDescription>Parâmetros técnicos para análise de sinais</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="mhiPeriods">Períodos MHI</Label>
+                <Input
+                  id="mhiPeriods"
+                  type="number"
+                  min="5"
+                  max="50"
+                  value={config.mhiPeriods}
+                  onChange={(e) => setConfig(prev => ({ ...prev, mhiPeriods: Number(e.target.value) }))}
+                  disabled={isRunning}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emaFast">EMA Rápida</Label>
+                <Input
+                  id="emaFast"
+                  type="number"
+                  min="5"
+                  max="20"
+                  value={config.emaFast}
+                  onChange={(e) => setConfig(prev => ({ ...prev, emaFast: Number(e.target.value) }))}
+                  disabled={isRunning}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="emaSlow">EMA Lenta (Tendência)</Label>
+                <Input
+                  id="emaSlow"
+                  type="number"
+                  min="15"
+                  max="50"
+                  value={config.emaSlow}
+                  onChange={(e) => setConfig(prev => ({ ...prev, emaSlow: Number(e.target.value) }))}
+                  disabled={isRunning}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rsiPeriods">RSI Períodos</Label>
+                <Input
+                  id="rsiPeriods"
+                  type="number"
+                  min="7"
+                  max="21"
+                  value={config.rsiPeriods}
+                  onChange={(e) => setConfig(prev => ({ ...prev, rsiPeriods: Number(e.target.value) }))}
+                  disabled={isRunning}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Status do Sistema</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1123,11 +1344,11 @@ export default function BotInterface() {
               </div>
             </div>
             
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button 
                 onClick={handleStart} 
                 disabled={isRunning}
-                className="flex-1"
+                className="flex-1 min-w-[120px]"
               >
                 <Play className="mr-2 h-4 w-4" />
                 ▶ Iniciar Bot
@@ -1136,10 +1357,33 @@ export default function BotInterface() {
                 onClick={handleStop} 
                 disabled={!isRunning}
                 variant="destructive"
-                className="flex-1"
+                className="flex-1 min-w-[120px]"
               >
                 <Square className="mr-2 h-4 w-4" />
                 ⏹ Parar
+              </Button>
+              <Button 
+                onClick={handleTest}
+                disabled={!isRunning}
+                variant="outline"
+                className="min-w-[120px]"
+              >
+                🧪 Teste
+              </Button>
+              <Button 
+                onClick={handleResetMartingale}
+                variant="outline"
+                className="min-w-[120px]"
+              >
+                🔄 Reset
+              </Button>
+              <Button 
+                onClick={handleAnalysis}
+                disabled={!isRunning}
+                variant="outline"
+                className="min-w-[120px]"
+              >
+                📈 Análise
               </Button>
               <Button 
                 onClick={handleHelp}

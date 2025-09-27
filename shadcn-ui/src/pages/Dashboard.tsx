@@ -19,7 +19,7 @@ import {
   AlertCircle,
   Clock
 } from 'lucide-react';
-import BotInterface from '@/components/BotInterface';
+import BotInterfaceWorking from '@/components/BotInterfaceWorking';
 
 interface License {
   id: number;
@@ -306,7 +306,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="bot">
-            <BotInterface />
+            <BotInterfaceWorking />
           </TabsContent>
 
           <TabsContent value="settings">
