@@ -17,9 +17,12 @@ import {
   TrendingDown,
   Target,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  Shield,
+  Smartphone
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface BotConfig {
   token: string;
@@ -112,8 +115,16 @@ interface SignalAnalysis {
   finalSignal: string;
 }
 
+interface DeviceInfo {
+  id: string;
+  name: string;
+  lastUsed: number;
+  userAgent: string;
+}
+
 export default function BotInterface() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const wsRef = useRef<WebSocket | null>(null);
   const analysisTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -122,8 +133,12 @@ export default function BotInterface() {
   const [lastTradeTime, setLastTradeTime] = useState(0);
   const [lastAnalysisTime, setLastAnalysisTime] = useState(0);
   const [analysisCount, setAnalysisCount] = useState(0);
+  const [deviceId, setDeviceId] = useState('');
+  const [deviceCount, setDeviceCount] = useState(0);
+  const [licenseValid, setLicenseValid] = useState(true);
   
-  const [config, setConfig] = useState<BotConfig>({
+  // Configuração padrão
+  const defaultConfig: BotConfig = {
     token: '',
     stake: 1,
     martingale: 2,
@@ -136,7 +151,9 @@ export default function BotInterface() {
     emaFast: 8,
     emaSlow: 18,
     rsiPeriods: 10
-  });
+  };
+
+  const [config, setConfig] = useState<BotConfig>(defaultConfig);
 
   const [stats, setStats] = useState<BotStats>({
     status: 'Aguardando...',
@@ -176,6 +193,129 @@ export default function BotInterface() {
   const MIN_TRADE_INTERVAL = 120000; // 2 minutos entre trades
   const MIN_ANALYSIS_INTERVAL = 30000; // 30 segundos entre análises
   const MAX_ANALYSIS_PER_MINUTE = 2; // Máximo 2 análises por minuto
+  const MAX_DEVICES = 2; // Máximo 2 dispositivos
+
+  // Gerar device fingerprint
+  const generateDeviceId = () => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.textBaseline = 'top';
+      ctx.font = '14px Arial';
+      ctx.fillText('Device fingerprint', 2, 2);
+    }
+    
+    const fingerprint = [
+      navigator.userAgent,
+      navigator.language,
+      screen.width + 'x' + screen.height,
+      new Date().getTimezoneOffset(),
+      canvas.toDataURL(),
+      navigator.hardwareConcurrency || 0,
+      navigator.deviceMemory || 0
+    ].join('|');
+    
+    // Simple hash function
+    let hash = 0;
+    for (let i = 0; i < fingerprint.length; i++) {
+      const char = fingerprint.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(16);
+  };
+
+  // Carregar configurações do localStorage
+  const loadConfig = () => {
+    try {
+      const savedConfig = localStorage.getItem('botmvb_config');
+      if (savedConfig) {
+        const parsed = JSON.parse(savedConfig);
+        setConfig({ ...defaultConfig, ...parsed });
+        addLog("✅ Configurações carregadas");
+      }
+    } catch (error) {
+      addLog("⚠️ Erro ao carregar configurações");
+    }
+  };
+
+  // Salvar configurações no localStorage
+  const saveConfig = (newConfig: BotConfig) => {
+    try {
+      localStorage.setItem('botmvb_config', JSON.stringify(newConfig));
+      addLog("💾 Configurações salvas");
+    } catch (error) {
+      addLog("⚠️ Erro ao salvar configurações");
+    }
+  };
+
+  // Gerenciar dispositivos
+  const checkDeviceLimit = () => {
+    const currentDeviceId = generateDeviceId();
+    setDeviceId(currentDeviceId);
+    
+    try {
+      const devicesKey = `botmvb_devices_${user?.id || 'guest'}`;
+      const savedDevices = localStorage.getItem(devicesKey);
+      let devices: DeviceInfo[] = savedDevices ? JSON.parse(savedDevices) : [];
+      
+      // Limpar dispositivos antigos (mais de 30 dias)
+      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      devices = devices.filter(device => device.lastUsed > thirtyDaysAgo);
+      
+      // Verificar se o dispositivo atual já existe
+      const existingDevice = devices.find(device => device.id === currentDeviceId);
+      
+      if (existingDevice) {
+        // Atualizar último uso
+        existingDevice.lastUsed = Date.now();
+        existingDevice.userAgent = navigator.userAgent;
+      } else {
+        // Verificar limite de dispositivos
+        if (devices.length >= MAX_DEVICES) {
+          setLicenseValid(false);
+          addLog(`❌ Limite de ${MAX_DEVICES} dispositivos atingido!`);
+          toast({
+            title: "Limite de dispositivos atingido!",
+            description: `Máximo ${MAX_DEVICES} dispositivos permitidos por licença`,
+            variant: "destructive"
+          });
+          return false;
+        }
+        
+        // Adicionar novo dispositivo
+        devices.push({
+          id: currentDeviceId,
+          name: `Dispositivo ${devices.length + 1}`,
+          lastUsed: Date.now(),
+          userAgent: navigator.userAgent
+        });
+      }
+      
+      // Salvar dispositivos atualizados
+      localStorage.setItem(devicesKey, JSON.stringify(devices));
+      setDeviceCount(devices.length);
+      setLicenseValid(true);
+      addLog(`📱 Dispositivo ${devices.length}/${MAX_DEVICES} autorizado`);
+      return true;
+    } catch (error) {
+      addLog("⚠️ Erro na verificação de dispositivos");
+      return true; // Permitir em caso de erro
+    }
+  };
+
+  // Inicialização
+  useEffect(() => {
+    loadConfig();
+    checkDeviceLimit();
+  }, [user]);
+
+  // Atualizar configuração e salvar
+  const updateConfig = (newConfig: Partial<BotConfig>) => {
+    const updatedConfig = { ...config, ...newConfig };
+    setConfig(updatedConfig);
+    saveConfig(updatedConfig);
+  };
 
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -686,6 +826,16 @@ export default function BotInterface() {
       return;
     }
 
+    // Verificar licença e limite de dispositivos
+    if (!licenseValid) {
+      toast({
+        title: "Licença inválida!",
+        description: `Limite de ${MAX_DEVICES} dispositivos atingido`,
+        variant: "destructive"
+      });
+      return;
+    }
+
     const token = config.token.trim();
     if (!token) {
       toast({
@@ -717,6 +867,7 @@ export default function BotInterface() {
 
     addLog(`🚀 Iniciando Bot - Par: ${config.symbol} | Entrada: ${config.stake} | Martingale: ${config.martingale}x`);
     addLog(`⚙️ Configurações: Min Confiança: ${config.minConfidence}% | Duração: ${config.duration}min`);
+    addLog(`📱 Dispositivo ${deviceCount}/${MAX_DEVICES} autorizado`);
     setStats(prev => ({ ...prev, status: "🔄 Conectando..." }));
     
     toast({
@@ -772,6 +923,46 @@ export default function BotInterface() {
 
   return (
     <div className="space-y-6">
+      {/* License Status */}
+      <Card className={`border-2 ${licenseValid ? 'border-green-200 bg-green-50/50' : 'border-red-200 bg-red-50/50'}`}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className={`h-5 w-5 ${licenseValid ? 'text-green-600' : 'text-red-600'}`} />
+            Status da Licença
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-3 bg-white rounded-lg border">
+              <div className="text-sm font-medium text-gray-600">Status</div>
+              <Badge variant={licenseValid ? "default" : "destructive"}>
+                {licenseValid ? "✅ Ativa" : "❌ Inválida"}
+              </Badge>
+            </div>
+            <div className="text-center p-3 bg-white rounded-lg border">
+              <div className="text-sm font-medium text-gray-600">Dispositivos</div>
+              <div className="text-lg font-bold text-blue-600">{deviceCount}/{MAX_DEVICES}</div>
+            </div>
+            <div className="text-center p-3 bg-white rounded-lg border">
+              <div className="text-sm font-medium text-gray-600">Device ID</div>
+              <div className="text-xs font-mono text-gray-500">{deviceId.slice(0, 8)}...</div>
+            </div>
+            <div className="text-center p-3 bg-white rounded-lg border">
+              <div className="text-sm font-medium text-gray-600">Usuário</div>
+              <div className="text-sm font-medium text-purple-600">{user?.name || 'Guest'}</div>
+            </div>
+          </div>
+          {!licenseValid && (
+            <Alert className="mt-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                Limite de {MAX_DEVICES} dispositivos atingido! Entre em contato com o suporte para aumentar sua licença.
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Strategy Info */}
       <Card className="border-blue-200 bg-blue-50/50">
         <CardHeader>
@@ -831,7 +1022,7 @@ export default function BotInterface() {
                 type="password"
                 placeholder="Cole seu token da Deriv"
                 value={config.token}
-                onChange={(e) => setConfig({ ...config, token: e.target.value })}
+                onChange={(e) => updateConfig({ token: e.target.value })}
                 disabled={isRunning}
               />
             </div>
@@ -844,7 +1035,7 @@ export default function BotInterface() {
                   min="1"
                   max="1000"
                   value={config.stake}
-                  onChange={(e) => setConfig({ ...config, stake: Number(e.target.value) })}
+                  onChange={(e) => updateConfig({ stake: Number(e.target.value) })}
                   disabled={isRunning}
                 />
               </div>
@@ -856,14 +1047,14 @@ export default function BotInterface() {
                   min="2"
                   max="5"
                   value={config.martingale}
-                  onChange={(e) => setConfig({ ...config, martingale: Number(e.target.value) })}
+                  onChange={(e) => updateConfig({ martingale: Number(e.target.value) })}
                   disabled={isRunning}
                 />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="symbol">Símbolo</Label>
-              <Select value={config.symbol} onValueChange={(value) => setConfig({ ...config, symbol: value })} disabled={isRunning}>
+              <Select value={config.symbol} onValueChange={(value) => updateConfig({ symbol: value })} disabled={isRunning}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -898,7 +1089,7 @@ export default function BotInterface() {
                   id="stopWin"
                   type="number"
                   value={config.stopWin}
-                  onChange={(e) => setConfig({ ...config, stopWin: Number(e.target.value) })}
+                  onChange={(e) => updateConfig({ stopWin: Number(e.target.value) })}
                   disabled={isRunning}
                 />
               </div>
@@ -908,7 +1099,7 @@ export default function BotInterface() {
                   id="stopLoss"
                   type="number"
                   value={config.stopLoss}
-                  onChange={(e) => setConfig({ ...config, stopLoss: Number(e.target.value) })}
+                  onChange={(e) => updateConfig({ stopLoss: Number(e.target.value) })}
                   disabled={isRunning}
                 />
               </div>
@@ -921,7 +1112,7 @@ export default function BotInterface() {
                 min="50"
                 max="95"
                 value={config.minConfidence}
-                onChange={(e) => setConfig({ ...config, minConfidence: Number(e.target.value) })}
+                onChange={(e) => updateConfig({ minConfidence: Number(e.target.value) })}
                 disabled={isRunning}
               />
             </div>
@@ -933,7 +1124,7 @@ export default function BotInterface() {
                 min="1"
                 max="5"
                 value={config.duration}
-                onChange={(e) => setConfig({ ...config, duration: Number(e.target.value) })}
+                onChange={(e) => updateConfig({ duration: Number(e.target.value) })}
                 disabled={isRunning}
               />
             </div>
@@ -994,7 +1185,7 @@ export default function BotInterface() {
             <div className="flex gap-2">
               <Button 
                 onClick={handleStart} 
-                disabled={isRunning}
+                disabled={isRunning || !licenseValid}
                 className="flex-1"
               >
                 <Play className="mr-2 h-4 w-4" />
