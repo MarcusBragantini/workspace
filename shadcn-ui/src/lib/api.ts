@@ -1,126 +1,125 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = 'http://localhost:3001/api';
 
 class ApiClient {
   private baseURL: string;
-  private token: string | null;
 
-  constructor() {
-    this.baseURL = API_BASE_URL;
-    this.token = localStorage.getItem('auth_token');
+  constructor(baseURL: string = API_BASE_URL) {
+    this.baseURL = baseURL;
   }
 
-  private async request(endpoint: string, options: RequestInit = {}) {
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(this.token && { Authorization: `Bearer ${this.token}` }),
-      ...options.headers,
+    const token = localStorage.getItem('token');
+
+    const config: RequestInit = {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+        ...options.headers,
+      },
+      ...options,
     };
 
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
+      const response = await fetch(url, config);
+      const data = await response.json();
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Erro na requisição');
+        throw new Error(data.error || data.message || 'Erro na requisição');
       }
 
-      return await response.json();
+      return data;
     } catch (error) {
       console.error('API Error:', error);
       throw error;
     }
   }
 
-  setToken(token: string) {
-    this.token = token;
-    localStorage.setItem('auth_token', token);
-  }
-
-  clearToken() {
-    this.token = null;
-    localStorage.removeItem('auth_token');
-  }
-
   // Auth endpoints
   async login(email: string, password: string) {
-    const response = await this.request('/auth/login', {
+    return this.request<{
+      token: string;
+      user: { id: string; name: string; email: string; role: string };
+    }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    
-    if (response.token) {
-      this.setToken(response.token);
-    }
-    
-    return response;
   }
 
-  async register(email: string, password: string, name: string) {
-    return this.request('/auth/register', {
+  async register(name: string, email: string, password: string) {
+    return this.request<{
+      message: string;
+      user: { id: string; name: string; email: string };
+      license: string;
+    }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ name, email, password }),
     });
   }
 
-  async validateLicense(license_key: string, device_fingerprint: string) {
-    return this.request('/auth/validate-license', {
-      method: 'POST',
-      body: JSON.stringify({ license_key, device_fingerprint }),
-    });
-  }
-
-  async getProfile() {
-    return this.request('/auth/profile');
+  async getCurrentUser() {
+    return this.request<{
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+    }>('/auth/profile');
   }
 
   // Admin endpoints
-  async getAdminDashboard() {
-    return this.request('/admin/dashboard');
-  }
-
   async getUsers() {
-    return this.request('/admin/users');
+    return this.request<any[]>('/admin/users');
   }
 
-  async updateUserStatus(userId: number, status: string) {
-    return this.request(`/admin/users/${userId}/status`, {
-      method: 'PUT',
-      body: JSON.stringify({ status }),
-    });
-  }
-
-  async getLicenses() {
-    return this.request('/admin/licenses');
-  }
-
-  async createLicense(data: {
-    user_id: number;
-    license_type: string;
-    duration_days: number;
-    max_devices?: number;
-  }) {
-    return this.request('/admin/licenses', {
+  async createUser(userData: { name: string; email: string; password: string; role: string }) {
+    return this.request<any>('/admin/users', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(userData),
     });
   }
 
-  async deactivateLicense(licenseId: number) {
-    return this.request(`/admin/licenses/${licenseId}`, {
+  async updateUser(userId: string, userData: any) {
+    return this.request<any>(`/admin/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    });
+  }
+
+  async deleteUser(userId: string) {
+    return this.request<any>(`/admin/users/${userId}`, {
       method: 'DELETE',
     });
   }
 
-  async extendLicense(licenseId: number, additional_days: number) {
-    return this.request(`/admin/licenses/${licenseId}/extend`, {
-      method: 'PUT',
-      body: JSON.stringify({ additional_days }),
+  async getLicenses() {
+    return this.request<any[]>('/admin/licenses');
+  }
+
+  async createLicense(licenseData: { user_id: string; license_type: string; duration_days: number }) {
+    return this.request<any>('/admin/licenses', {
+      method: 'POST',
+      body: JSON.stringify(licenseData),
     });
+  }
+
+  async revokeLicense(licenseId: string) {
+    return this.request<any>(`/admin/licenses/${licenseId}/revoke`, {
+      method: 'POST',
+    });
+  }
+
+  async getStats() {
+    return this.request<{
+      totalUsers: number;
+      activeLicenses: number;
+      totalRevenue: number;
+      recentUsers: any[];
+    }>('/admin/stats');
   }
 }
 
 export const apiClient = new ApiClient();
+export default apiClient;
