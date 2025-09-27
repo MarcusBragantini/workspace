@@ -189,14 +189,21 @@ export default function BotInterface() {
     "wss://ws.derivws.com/websockets/v3"
   ];
 
-  // Constantes de controle - CORRIGIDAS para permitir coleta de dados
-  const MIN_TRADE_INTERVAL = 30000; // 30 segundos entre trades (era 2 minutos)
-  const MIN_ANALYSIS_INTERVAL = 5000; // 5 segundos entre análises (era 30 segundos)
-  const MAX_ANALYSIS_PER_MINUTE = 10; // Máximo 10 análises por minuto (era 2)
+  // Constantes de controle
+  const MIN_TRADE_INTERVAL = 120000; // 2 minutos entre trades
+  const MIN_ANALYSIS_INTERVAL = 3000; // 3 segundos entre análises
+  const MAX_ANALYSIS_PER_MINUTE = 15; // Máximo 15 análises por minuto
   const MAX_DEVICES = 2; // Máximo 2 dispositivos
+
+  // DEBUG: Adicionar logs detalhados
+  const debugLog = (message: string, data?: any) => {
+    console.log(`[BOT DEBUG] ${message}`, data || '');
+    addLog(`🐛 DEBUG: ${message}`);
+  };
 
   // Gerar device fingerprint
   const generateDeviceId = () => {
+    debugLog("Gerando device fingerprint...");
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (ctx) {
@@ -222,35 +229,50 @@ export default function BotInterface() {
       hash = ((hash << 5) - hash) + char;
       hash = hash & hash; // Convert to 32bit integer
     }
-    return Math.abs(hash).toString(16);
+    const deviceId = Math.abs(hash).toString(16);
+    debugLog("Device ID gerado:", deviceId);
+    return deviceId;
   };
 
   // Carregar configurações do localStorage
   const loadConfig = () => {
+    debugLog("Carregando configurações...");
     try {
       const savedConfig = localStorage.getItem('botmvb_config');
+      debugLog("Config salvo encontrado:", savedConfig);
+      
       if (savedConfig) {
         const parsed = JSON.parse(savedConfig);
-        setConfig({ ...defaultConfig, ...parsed });
-        addLog("✅ Configurações carregadas");
+        const loadedConfig = { ...defaultConfig, ...parsed };
+        setConfig(loadedConfig);
+        debugLog("Config carregado com sucesso:", loadedConfig);
+        addLog("✅ Configurações carregadas do localStorage");
+      } else {
+        debugLog("Nenhum config salvo, usando padrão");
+        addLog("📝 Usando configurações padrão");
       }
     } catch (error) {
+      debugLog("Erro ao carregar config:", error);
       addLog("⚠️ Erro ao carregar configurações");
     }
   };
 
   // Salvar configurações no localStorage
   const saveConfig = (newConfig: BotConfig) => {
+    debugLog("Salvando configurações:", newConfig);
     try {
       localStorage.setItem('botmvb_config', JSON.stringify(newConfig));
-      addLog("💾 Configurações salvas");
+      debugLog("Config salvo com sucesso");
+      addLog("💾 Configurações salvas automaticamente");
     } catch (error) {
+      debugLog("Erro ao salvar config:", error);
       addLog("⚠️ Erro ao salvar configurações");
     }
   };
 
   // Gerenciar dispositivos
   const checkDeviceLimit = () => {
+    debugLog("Verificando limite de dispositivos...");
     const currentDeviceId = generateDeviceId();
     setDeviceId(currentDeviceId);
     
@@ -258,6 +280,8 @@ export default function BotInterface() {
       const devicesKey = `botmvb_devices_${user?.id || 'guest'}`;
       const savedDevices = localStorage.getItem(devicesKey);
       let devices: DeviceInfo[] = savedDevices ? JSON.parse(savedDevices) : [];
+      
+      debugLog("Dispositivos salvos:", devices);
       
       // Limpar dispositivos antigos (mais de 30 dias)
       const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
@@ -267,12 +291,15 @@ export default function BotInterface() {
       const existingDevice = devices.find(device => device.id === currentDeviceId);
       
       if (existingDevice) {
+        debugLog("Dispositivo existente encontrado");
         // Atualizar último uso
         existingDevice.lastUsed = Date.now();
         existingDevice.userAgent = navigator.userAgent;
       } else {
+        debugLog("Novo dispositivo, verificando limite");
         // Verificar limite de dispositivos
         if (devices.length >= MAX_DEVICES) {
+          debugLog("Limite de dispositivos atingido!");
           setLicenseValid(false);
           addLog(`❌ Limite de ${MAX_DEVICES} dispositivos atingido!`);
           toast({
@@ -290,15 +317,18 @@ export default function BotInterface() {
           lastUsed: Date.now(),
           userAgent: navigator.userAgent
         });
+        debugLog("Novo dispositivo adicionado");
       }
       
       // Salvar dispositivos atualizados
       localStorage.setItem(devicesKey, JSON.stringify(devices));
       setDeviceCount(devices.length);
       setLicenseValid(true);
+      debugLog(`Dispositivos atualizados: ${devices.length}/${MAX_DEVICES}`);
       addLog(`📱 Dispositivo ${devices.length}/${MAX_DEVICES} autorizado`);
       return true;
     } catch (error) {
+      debugLog("Erro na verificação de dispositivos:", error);
       addLog("⚠️ Erro na verificação de dispositivos");
       return true; // Permitir em caso de erro
     }
@@ -306,15 +336,18 @@ export default function BotInterface() {
 
   // Inicialização
   useEffect(() => {
+    debugLog("Inicializando componente...");
     loadConfig();
     checkDeviceLimit();
   }, [user]);
 
   // Atualizar configuração e salvar
   const updateConfig = (newConfig: Partial<BotConfig>) => {
+    debugLog("Atualizando configuração:", newConfig);
     const updatedConfig = { ...config, ...newConfig };
     setConfig(updatedConfig);
     saveConfig(updatedConfig);
+    debugLog("Config atualizado e salvo:", updatedConfig);
   };
 
   const addLog = (message: string) => {
@@ -332,6 +365,7 @@ export default function BotInterface() {
   // Reset analysis count every minute
   useEffect(() => {
     const interval = setInterval(() => {
+      debugLog("Resetando contador de análises");
       setAnalysisCount(0);
     }, 60000);
 
@@ -339,27 +373,33 @@ export default function BotInterface() {
   }, []);
 
   const connectWebSocket = (token: string, endpointIndex = 0): WebSocket | null => {
+    debugLog(`Conectando WebSocket (endpoint ${endpointIndex})...`);
     if (endpointIndex >= WEBSOCKET_ENDPOINTS.length) {
+      debugLog("Todos os endpoints falharam");
       addLog("❌ Todos os endpoints falharam.");
       return null;
     }
 
     const endpoint = WEBSOCKET_ENDPOINTS[endpointIndex] + "?app_id=1089";
+    debugLog("Endpoint:", endpoint);
     
     try {
       const ws = new WebSocket(endpoint);
       
       ws.onopen = () => {
+        debugLog("WebSocket conectado!");
         addLog("✅ WebSocket conectado!");
         setStats(prev => ({ ...prev, status: "🔐 Autenticando..." }));
         ws.send(JSON.stringify({ authorize: token }));
       };
 
       ws.onmessage = (event) => {
+        debugLog("Mensagem WebSocket recebida");
         handleWebSocketMessage(event, ws);
       };
 
       ws.onclose = (event) => {
+        debugLog("WebSocket fechado:", event);
         if (!event.wasClean && isRunning) {
           addLog("🔴 Conexão perdida. Reconectando...");
           setTimeout(() => {
@@ -369,12 +409,14 @@ export default function BotInterface() {
         }
       };
 
-      ws.onerror = () => {
+      ws.onerror = (error) => {
+        debugLog("Erro WebSocket:", error);
         addLog(`❌ Erro de conexão.`);
       };
 
       return ws;
     } catch (error) {
+      debugLog("Erro ao criar WebSocket:", error);
       addLog(`❌ Erro ao criar WebSocket`);
       return null;
     }
@@ -383,8 +425,10 @@ export default function BotInterface() {
   const handleWebSocketMessage = (event: MessageEvent, ws: WebSocket) => {
     try {
       const data: WebSocketMessage = JSON.parse(event.data);
+      debugLog("Dados WebSocket:", data);
 
       if (data.error) {
+        debugLog("Erro WebSocket:", data.error);
         addLog(`❌ ERRO: ${data.error.message}`);
         if (data.error.code === 'InvalidToken') {
           setStats(prev => ({ ...prev, status: "❌ Token Inválido" }));
@@ -394,6 +438,7 @@ export default function BotInterface() {
       }
 
       if (data.msg_type === "authorize") {
+        debugLog("Autorização bem-sucedida");
         addLog("🔐 Autenticado com sucesso!");
         ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
         ws.send(JSON.stringify({ ticks: config.symbol, subscribe: 1 }));
@@ -402,10 +447,12 @@ export default function BotInterface() {
 
       if (data.msg_type === "balance") {
         const balance = data.balance?.balance || 0;
+        debugLog("Saldo recebido:", balance);
         setStats(prev => ({ ...prev, balance }));
         addLog(`💰 Saldo: $${balance} USD`);
         
         if (!isRunning) {
+          debugLog("Ativando bot...");
           setIsRunning(true);
           addLog("✅ Bot ativo e coletando dados!");
           setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
@@ -413,10 +460,12 @@ export default function BotInterface() {
       }
 
       if (data.msg_type === "tick") {
+        debugLog("Tick recebido:", data.tick);
         processTick(data.tick, ws);
       }
 
       if (data.msg_type === "proposal") {
+        debugLog("Proposta recebida");
         addLog(`📋 Proposta recebida`);
         const buyRequest = { buy: data.proposal?.id, price: stats.currentStake };
         ws.send(JSON.stringify(buyRequest));
@@ -424,11 +473,13 @@ export default function BotInterface() {
 
       if (data.msg_type === "buy") {
         if (data.buy?.error) {
+          debugLog("Erro na compra:", data.buy.error);
           addLog(`❌ Erro na compra: ${data.buy.error.message}`);
           setIsTrading(false);
           return;
         }
         
+        debugLog("Compra realizada:", data.buy?.contract_id);
         addLog(`✅ Contrato ID: ${data.buy?.contract_id}`);
         ws.send(JSON.stringify({ 
           proposal_open_contract: 1, 
@@ -439,12 +490,14 @@ export default function BotInterface() {
 
       if (data.msg_type === "proposal_open_contract") {
         const contract = data.proposal_open_contract;
+        debugLog("Contrato atualizado:", contract);
         if (contract?.is_sold) {
           handleTradeResult(contract);
         }
       }
 
     } catch (error) {
+      debugLog("Erro processando mensagem:", error);
       const err = error as Error;
       addLog(`❌ Erro processando mensagem: ${err.message}`);
     }
@@ -452,7 +505,10 @@ export default function BotInterface() {
 
   const processTick = (tick: WebSocketMessage['tick'], ws: WebSocket) => {
     try {
+      debugLog("Processando tick...", tick);
+      
       if (!tick || !tick.quote || !isRunning) {
+        debugLog("Tick inválido ou bot parado");
         return;
       }
       
@@ -461,41 +517,50 @@ export default function BotInterface() {
       const volume = tick.volume || 1;
       const now = Date.now();
       
-      // SEMPRE adicionar dados de preço primeiro (sem restrições)
+      debugLog(`Preço: ${price}, Volume: ${volume}`);
+      
+      // SEMPRE adicionar dados de preço
       const newPriceData = [...priceData, { high: price, low: price, close: price, timestamp }];
       const newVolumeData = [...volumeData, volume];
+      
+      debugLog(`Dados antes: ${priceData.length}, depois: ${newPriceData.length}`);
       
       // Manter apenas dados necessários
       const maxDataPoints = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods) * 2;
       if (newPriceData.length > maxDataPoints) {
         setPriceData(newPriceData.slice(-maxDataPoints));
         setVolumeData(newVolumeData.slice(-maxDataPoints));
+        debugLog(`Dados limitados a ${maxDataPoints}`);
       } else {
         setPriceData(newPriceData);
         setVolumeData(newVolumeData);
       }
       
-      // Atualizar contador de dados SEMPRE
+      // Atualizar contador de dados
       setStats(prev => ({ ...prev, dataCount: newPriceData.length }));
+      debugLog(`Contador de dados atualizado: ${newPriceData.length}`);
       
-      // Log de debug para mostrar progresso
-      if (newPriceData.length % 10 === 0) {
-        addLog(`📈 Dados coletados: ${newPriceData.length} | Preço atual: ${price.toFixed(4)}`);
+      // Log de progresso a cada 5 ticks
+      if (newPriceData.length % 5 === 0) {
+        addLog(`📈 Dados coletados: ${newPriceData.length} | Preço: ${price.toFixed(4)}`);
       }
-      
-      // Controles de tempo para ANÁLISE (não para coleta de dados)
+
+      // Controles de tempo para ANÁLISE
       const timeSinceLastTrade = now - lastTradeTime;
       const timeSinceLastAnalysis = now - lastAnalysisTime;
       
-      // Se está em trading, não analisar (mas continua coletando dados)
+      debugLog(`Tempo desde último trade: ${timeSinceLastTrade}ms, análise: ${timeSinceLastAnalysis}ms`);
+      
+      // Se está em trading, não analisar
       if (isTrading) {
+        debugLog("Em trading, pulando análise");
         return;
       }
       
-      // Se trade recente, aguardar para próximo trade
+      // Se trade recente, aguardar
       if (timeSinceLastTrade < MIN_TRADE_INTERVAL && lastTradeTime > 0) {
         const remainingTime = Math.ceil((MIN_TRADE_INTERVAL - timeSinceLastTrade) / 1000);
-        if (remainingTime % 10 === 0) { // Log a cada 10 segundos
+        if (remainingTime % 30 === 0) {
           addLog(`⏳ Aguardando ${remainingTime}s para próximo trade...`);
         }
         return;
@@ -503,29 +568,36 @@ export default function BotInterface() {
       
       // Se análise muito recente, aguardar
       if (timeSinceLastAnalysis < MIN_ANALYSIS_INTERVAL) {
+        debugLog("Análise muito recente, aguardando");
         return;
       }
       
       // Se muitas análises por minuto, aguardar
       if (analysisCount >= MAX_ANALYSIS_PER_MINUTE) {
-        addLog(`⏳ Limite de análises por minuto atingido. Aguardando...`);
+        if (analysisCount === MAX_ANALYSIS_PER_MINUTE) {
+          addLog(`⏳ Limite de análises por minuto atingido. Aguardando...`);
+        }
         return;
       }
       
       // Analisar sinais se temos dados suficientes
-      if (newPriceData.length >= Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods)) {
+      const minDataNeeded = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods);
+      debugLog(`Dados necessários: ${minDataNeeded}, disponíveis: ${newPriceData.length}`);
+      
+      if (newPriceData.length >= minDataNeeded) {
+        debugLog("Iniciando análise de sinais...");
         setLastAnalysisTime(now);
         setAnalysisCount(prev => prev + 1);
-        
-        addLog(`🔍 Analisando sinais... (${analysisCount + 1}/${MAX_ANALYSIS_PER_MINUTE})`);
         setStats(prev => ({ ...prev, status: "🔍 Analisando sinais..." }));
         
         const analysis = analyzeSignals(newPriceData, newVolumeData);
+        debugLog("Resultado da análise:", analysis);
         
         if (analysis) {
           updateSignalsDisplay(analysis.signals, analysis.confidence);
           
           if (analysis.finalSignal !== "NEUTRO" && analysis.confidence >= config.minConfidence) {
+            debugLog(`Sinal válido encontrado: ${analysis.finalSignal} (${analysis.confidence}%)`);
             addLog(`🎯 SINAL: ${analysis.finalSignal} (${analysis.confidence}%)`);
             toast({
               title: "🎯 Sinal detectado!",
@@ -535,17 +607,19 @@ export default function BotInterface() {
             setIsTrading(true);
             executeTrade(analysis.finalSignal, ws);
           } else {
+            debugLog(`Sinal fraco: ${analysis.finalSignal} (${analysis.confidence}%)`);
             addLog(`📊 Análise: ${analysis.finalSignal} (${analysis.confidence}%) - Aguardando sinal melhor...`);
             setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
           }
         }
       } else {
-        // Mostrar progresso da coleta
-        const needed = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods);
-        const progress = Math.round((newPriceData.length / needed) * 100);
+        // Ainda coletando dados iniciais
+        const progress = Math.round((newPriceData.length / minDataNeeded) * 100);
+        debugLog(`Progresso da coleta: ${progress}%`);
         setStats(prev => ({ ...prev, status: `📊 Coletando dados... ${progress}%` }));
       }
     } catch (error) {
+      debugLog("Erro processando tick:", error);
       const err = error as Error;
       addLog(`❌ Erro processando tick: ${err.message}`);
     }
@@ -553,7 +627,9 @@ export default function BotInterface() {
 
   const analyzeSignals = (prices: PriceData[], volumes: number[]): SignalAnalysis | null => {
     try {
+      debugLog("Analisando sinais...");
       if (!prices || prices.length < Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods)) {
+        debugLog("Dados insuficientes para análise");
         return null;
       }
       
@@ -608,12 +684,15 @@ export default function BotInterface() {
       const finalSignal = calculateFinalSignal(signals);
       const confidence = calculateConfidence(signals, rsi);
       
+      debugLog("Sinais calculados:", { signals, finalSignal, confidence });
+      
       return {
         signals: { ...signals, final: finalSignal },
         confidence,
         finalSignal
       };
     } catch (error) {
+      debugLog("Erro no cálculo de sinais:", error);
       const err = error as Error;
       addLog(`❌ Erro no cálculo de sinais: ${err.message}`);
       return null;
@@ -670,6 +749,7 @@ export default function BotInterface() {
   };
 
   const updateSignalsDisplay = (signals: Record<string, string>, confidence: number) => {
+    debugLog("Atualizando display de sinais:", { signals, confidence });
     setSignals({
       mhi: signals.mhi || "-",
       trend: signals.trend || "-",
@@ -682,7 +762,9 @@ export default function BotInterface() {
   };
 
   const executeTrade = (signal: string, ws: WebSocket) => {
+    debugLog(`Executando trade: ${signal}`);
     if (!ws || ws.readyState !== WebSocket.OPEN) {
+      debugLog("WebSocket não conectado!");
       addLog("❌ WebSocket não conectado!");
       setIsTrading(false);
       return;
@@ -701,11 +783,13 @@ export default function BotInterface() {
       symbol: config.symbol
     };
 
+    debugLog("Enviando proposta:", proposal);
     ws.send(JSON.stringify(proposal));
     setStats(prev => ({ ...prev, status: `🚀 ${signal} - $${stats.currentStake}` }));
   };
 
   const handleTradeResult = (contract: WebSocketMessage['proposal_open_contract']) => {
+    debugLog("Resultado do trade:", contract);
     if (!contract) return;
     
     const profit = contract.profit;
@@ -833,7 +917,9 @@ export default function BotInterface() {
   };
 
   const handleStart = () => {
+    debugLog("Iniciando bot...");
     if (isRunning) {
+      debugLog("Bot já está rodando");
       toast({
         title: "Bot já está em execução!",
         variant: "destructive"
@@ -843,6 +929,7 @@ export default function BotInterface() {
 
     // Verificar licença e limite de dispositivos
     if (!licenseValid) {
+      debugLog("Licença inválida");
       toast({
         title: "Licença inválida!",
         description: `Limite de ${MAX_DEVICES} dispositivos atingido`,
@@ -852,6 +939,7 @@ export default function BotInterface() {
     }
 
     const token = config.token.trim();
+    debugLog("Token:", token ? "Presente" : "Ausente");
     if (!token) {
       toast({
         title: "Token da Deriv é obrigatório!",
@@ -862,6 +950,7 @@ export default function BotInterface() {
     }
 
     // Reset data
+    debugLog("Resetando dados...");
     setPriceData([]);
     setVolumeData([]);
     setIsTrading(false);
@@ -881,10 +970,10 @@ export default function BotInterface() {
       dataCount: 0
     }));
 
-    addLog(`🚀 Iniciando Bot - Par: ${config.symbol} | Entrada: ${config.stake} | Martingale: ${config.martingale}x`);
+    addLog(`🚀 Iniciando Bot - Par: ${config.symbol} | Entrada: $${config.stake} | Martingale: ${config.martingale}x`);
     addLog(`⚙️ Configurações: Min Confiança: ${config.minConfidence}% | Duração: ${config.duration}min`);
     addLog(`📱 Dispositivo ${deviceCount}/${MAX_DEVICES} autorizado`);
-    addLog(`⏱️ Timeouts: ${MIN_TRADE_INTERVAL/1000}s entre trades, ${MIN_ANALYSIS_INTERVAL/1000}s entre análises`);
+    addLog(`🔧 Intervalos: Análise ${MIN_ANALYSIS_INTERVAL/1000}s | Trade ${MIN_TRADE_INTERVAL/60000}min`);
     setStats(prev => ({ ...prev, status: "🔄 Conectando..." }));
     
     toast({
@@ -892,13 +981,16 @@ export default function BotInterface() {
       description: `Monitorando ${config.symbol}`,
     });
 
+    debugLog("Conectando WebSocket...");
     const ws = connectWebSocket(token);
     if (ws) {
       wsRef.current = ws;
+      debugLog("WebSocket armazenado na ref");
     }
   };
 
   const handleStop = () => {
+    debugLog("Parando bot...");
     setIsRunning(false);
     setIsTrading(false);
     
@@ -940,6 +1032,43 @@ export default function BotInterface() {
 
   return (
     <div className="space-y-6">
+      {/* Debug Info */}
+      <Card className="border-yellow-200 bg-yellow-50/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-yellow-800">
+            🐛 Debug Info
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <strong>Config Token:</strong> {config.token ? "✅ Presente" : "❌ Ausente"}
+            </div>
+            <div>
+              <strong>Is Running:</strong> {isRunning ? "✅ Sim" : "❌ Não"}
+            </div>
+            <div>
+              <strong>Price Data:</strong> {priceData.length} items
+            </div>
+            <div>
+              <strong>Data Count:</strong> {stats.dataCount}
+            </div>
+            <div>
+              <strong>License Valid:</strong> {licenseValid ? "✅ Sim" : "❌ Não"}
+            </div>
+            <div>
+              <strong>Device Count:</strong> {deviceCount}/{MAX_DEVICES}
+            </div>
+            <div>
+              <strong>Analysis Count:</strong> {analysisCount}/{MAX_ANALYSIS_PER_MINUTE}
+            </div>
+            <div>
+              <strong>WebSocket:</strong> {wsRef.current ? "✅ Conectado" : "❌ Desconectado"}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* License Status */}
       <Card className={`border-2 ${licenseValid ? 'border-green-200 bg-green-50/50' : 'border-red-200 bg-red-50/50'}`}>
         <CardHeader>
@@ -1039,7 +1168,10 @@ export default function BotInterface() {
                 type="password"
                 placeholder="Cole seu token da Deriv"
                 value={config.token}
-                onChange={(e) => updateConfig({ token: e.target.value })}
+                onChange={(e) => {
+                  debugLog("Token alterado");
+                  updateConfig({ token: e.target.value });
+                }}
                 disabled={isRunning}
               />
             </div>
@@ -1052,7 +1184,10 @@ export default function BotInterface() {
                   min="1"
                   max="1000"
                   value={config.stake}
-                  onChange={(e) => updateConfig({ stake: Number(e.target.value) })}
+                  onChange={(e) => {
+                    debugLog("Stake alterado:", e.target.value);
+                    updateConfig({ stake: Number(e.target.value) });
+                  }}
                   disabled={isRunning}
                 />
               </div>
@@ -1064,14 +1199,24 @@ export default function BotInterface() {
                   min="2"
                   max="5"
                   value={config.martingale}
-                  onChange={(e) => updateConfig({ martingale: Number(e.target.value) })}
+                  onChange={(e) => {
+                    debugLog("Martingale alterado:", e.target.value);
+                    updateConfig({ martingale: Number(e.target.value) });
+                  }}
                   disabled={isRunning}
                 />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="symbol">Símbolo</Label>
-              <Select value={config.symbol} onValueChange={(value) => updateConfig({ symbol: value })} disabled={isRunning}>
+              <Select 
+                value={config.symbol} 
+                onValueChange={(value) => {
+                  debugLog("Símbolo alterado:", value);
+                  updateConfig({ symbol: value });
+                }} 
+                disabled={isRunning}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1193,8 +1338,8 @@ export default function BotInterface() {
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  Bot otimizado: máximo {MAX_ANALYSIS_PER_MINUTE} análises/min, 
-                  intervalo de {MIN_TRADE_INTERVAL/1000}s entre trades, {MIN_ANALYSIS_INTERVAL/1000}s entre análises.
+                  Bot ativo: coleta contínua de dados, análise a cada {MIN_ANALYSIS_INTERVAL/1000}s, 
+                  máximo {MAX_ANALYSIS_PER_MINUTE} análises/min, {MIN_TRADE_INTERVAL/60000}min entre trades.
                 </AlertDescription>
               </Alert>
             )}
