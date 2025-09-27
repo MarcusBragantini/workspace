@@ -1,125 +1,172 @@
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+interface User {
+  id: number;
+  email: string;
+  name: string;
+  role: string;
+}
+
+interface License {
+  id: number;
+  license_key: string;
+  license_type: string;
+  expires_at: string;
+  days_remaining: number;
+  active_devices: number;
+  max_devices: number;
+}
+
+interface LoginResponse {
+  token: string;
+  user: User;
+}
+
+interface RegisterResponse {
+  message: string;
+  user: User;
+  license: string;
+}
+
+interface ProfileResponse {
+  user: User;
+  licenses: License[];
+}
+
+interface AdminDashboardResponse {
+  totalUsers: number;
+  activeLicenses: number;
+  totalRevenue: number;
+  recentUsers: User[];
+}
+
+interface LicenseValidationResponse {
+  valid: boolean;
+  license: License;
+  message: string;
+}
 
 class ApiClient {
   private baseURL: string;
+  private token: string | null;
 
-  constructor(baseURL: string = API_BASE_URL) {
-    this.baseURL = baseURL;
+  constructor() {
+    this.baseURL = API_BASE_URL;
+    this.token = localStorage.getItem('auth_token');
   }
 
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
-    const token = localStorage.getItem('token');
-
-    const config: RequestInit = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-        ...options.headers,
-      },
-      ...options,
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(this.token && { Authorization: `Bearer ${this.token}` }),
+      ...options.headers,
     };
 
     try {
-      const response = await fetch(url, config);
-      const data = await response.json();
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      });
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || 'Erro na requisição');
+        const error = await response.json();
+        throw new Error(error.error || 'Erro na requisição');
       }
 
-      return data;
+      return await response.json();
     } catch (error) {
       console.error('API Error:', error);
       throw error;
     }
   }
 
+  setToken(token: string) {
+    this.token = token;
+    localStorage.setItem('auth_token', token);
+  }
+
+  clearToken() {
+    this.token = null;
+    localStorage.removeItem('auth_token');
+  }
+
   // Auth endpoints
-  async login(email: string, password: string) {
-    return this.request<{
-      token: string;
-      user: { id: string; name: string; email: string; role: string };
-    }>('/auth/login', {
+  async login(email: string, password: string): Promise<LoginResponse> {
+    const response = await this.request<LoginResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+    
+    if (response.token) {
+      this.setToken(response.token);
+    }
+    
+    return response;
   }
 
-  async register(name: string, email: string, password: string) {
-    return this.request<{
-      message: string;
-      user: { id: string; name: string; email: string };
-      license: string;
-    }>('/auth/register', {
+  async register(email: string, password: string, name: string): Promise<RegisterResponse> {
+    return this.request<RegisterResponse>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ email, password, name }),
     });
   }
 
-  async getCurrentUser() {
-    return this.request<{
-      id: string;
-      name: string;
-      email: string;
-      role: string;
-    }>('/auth/profile');
+  async validateLicense(license_key: string, device_fingerprint: string): Promise<LicenseValidationResponse> {
+    return this.request<LicenseValidationResponse>('/auth/validate-license', {
+      method: 'POST',
+      body: JSON.stringify({ license_key, device_fingerprint }),
+    });
+  }
+
+  async getProfile(): Promise<ProfileResponse> {
+    return this.request<ProfileResponse>('/auth/profile');
   }
 
   // Admin endpoints
-  async getUsers() {
-    return this.request<any[]>('/admin/users');
+  async getAdminDashboard(): Promise<AdminDashboardResponse> {
+    return this.request<AdminDashboardResponse>('/admin/dashboard');
   }
 
-  async createUser(userData: { name: string; email: string; password: string; role: string }) {
-    return this.request<any>('/admin/users', {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    });
+  async getUsers(): Promise<User[]> {
+    return this.request<User[]>('/admin/users');
   }
 
-  async updateUser(userId: string, userData: any) {
-    return this.request<any>(`/admin/users/${userId}`, {
+  async updateUserStatus(userId: number, status: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/admin/users/${userId}/status`, {
       method: 'PUT',
-      body: JSON.stringify(userData),
+      body: JSON.stringify({ status }),
     });
   }
 
-  async deleteUser(userId: string) {
-    return this.request<any>(`/admin/users/${userId}`, {
+  async getLicenses(): Promise<License[]> {
+    return this.request<License[]>('/admin/licenses');
+  }
+
+  async createLicense(data: {
+    user_id: number;
+    license_type: string;
+    duration_days: number;
+    max_devices?: number;
+  }): Promise<License> {
+    return this.request<License>('/admin/licenses', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deactivateLicense(licenseId: number): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/admin/licenses/${licenseId}`, {
       method: 'DELETE',
     });
   }
 
-  async getLicenses() {
-    return this.request<any[]>('/admin/licenses');
-  }
-
-  async createLicense(licenseData: { user_id: string; license_type: string; duration_days: number }) {
-    return this.request<any>('/admin/licenses', {
-      method: 'POST',
-      body: JSON.stringify(licenseData),
+  async extendLicense(licenseId: number, additional_days: number): Promise<License> {
+    return this.request<License>(`/admin/licenses/${licenseId}/extend`, {
+      method: 'PUT',
+      body: JSON.stringify({ additional_days }),
     });
-  }
-
-  async revokeLicense(licenseId: string) {
-    return this.request<any>(`/admin/licenses/${licenseId}/revoke`, {
-      method: 'POST',
-    });
-  }
-
-  async getStats() {
-    return this.request<{
-      totalUsers: number;
-      activeLicenses: number;
-      totalRevenue: number;
-      recentUsers: any[];
-    }>('/admin/stats');
   }
 }
 
 export const apiClient = new ApiClient();
-export default apiClient;
