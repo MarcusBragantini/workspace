@@ -70,6 +70,48 @@ interface Signals {
   confidence: string;
 }
 
+interface PriceData {
+  high: number;
+  low: number;
+  close: number;
+  timestamp: number;
+}
+
+interface WebSocketMessage {
+  msg_type?: string;
+  error?: {
+    message: string;
+    code?: string;
+  };
+  balance?: {
+    balance: number;
+  };
+  tick?: {
+    quote: number;
+    volume?: number;
+  };
+  proposal?: {
+    id: string;
+  };
+  buy?: {
+    contract_id?: string;
+    error?: {
+      message: string;
+    };
+  };
+  proposal_open_contract?: {
+    is_sold: boolean;
+    profit: number;
+    contract_id: string;
+  };
+}
+
+interface SignalAnalysis {
+  signals: Record<string, string>;
+  confidence: number;
+  finalSignal: string;
+}
+
 export default function BotInterface() {
   const { toast } = useToast();
   const wsRef = useRef<WebSocket | null>(null);
@@ -117,7 +159,7 @@ export default function BotInterface() {
 
   const [logs, setLogs] = useState<string[]>([]);
   const [history, setHistory] = useState<TradeHistory[]>([]);
-  const [priceData, setPriceData] = useState<any[]>([]);
+  const [priceData, setPriceData] = useState<PriceData[]>([]);
   const [volumeData, setVolumeData] = useState<number[]>([]);
   const logsRef = useRef<HTMLDivElement>(null);
 
@@ -182,7 +224,7 @@ export default function BotInterface() {
 
   const handleWebSocketMessage = (event: MessageEvent, ws: WebSocket) => {
     try {
-      const data = JSON.parse(event.data);
+      const data: WebSocketMessage = JSON.parse(event.data);
 
       if (data.error) {
         addLog(`❌ ERRO: ${data.error.message}`);
@@ -218,45 +260,46 @@ export default function BotInterface() {
 
       if (data.msg_type === "proposal") {
         addLog(`📋 Proposta recebida`);
-        const buyRequest = { buy: data.proposal.id, price: stats.currentStake };
+        const buyRequest = { buy: data.proposal?.id, price: stats.currentStake };
         ws.send(JSON.stringify(buyRequest));
       }
 
       if (data.msg_type === "buy") {
-        if (data.buy.error) {
+        if (data.buy?.error) {
           addLog(`❌ Erro na compra: ${data.buy.error.message}`);
           setIsTrading(false);
           return;
         }
         
-        addLog(`✅ Contrato ID: ${data.buy.contract_id}`);
+        addLog(`✅ Contrato ID: ${data.buy?.contract_id}`);
         ws.send(JSON.stringify({ 
           proposal_open_contract: 1, 
           subscribe: 1, 
-          contract_id: data.buy.contract_id 
+          contract_id: data.buy?.contract_id 
         }));
       }
 
       if (data.msg_type === "proposal_open_contract") {
         const contract = data.proposal_open_contract;
-        if (contract.is_sold) {
+        if (contract?.is_sold) {
           handleTradeResult(contract);
         }
       }
 
-    } catch (error: any) {
-      addLog(`❌ Erro processando mensagem: ${error.message}`);
+    } catch (error) {
+      const err = error as Error;
+      addLog(`❌ Erro processando mensagem: ${err.message}`);
     }
   };
 
-  const processTick = (tick: any, ws: WebSocket) => {
+  const processTick = (tick: WebSocketMessage['tick'], ws: WebSocket) => {
     try {
       if (!tick || !tick.quote) {
         addLog("⚠️ Tick inválido recebido");
         return;
       }
       
-      const price = parseFloat(tick.quote);
+      const price = parseFloat(tick.quote.toString());
       const timestamp = Math.floor(Date.now() / 1000);
       const volume = tick.volume || 1;
       
@@ -297,12 +340,13 @@ export default function BotInterface() {
           executeTrade(analysis.finalSignal, ws);
         }
       }
-    } catch (error: any) {
-      addLog(`❌ Erro processando tick: ${error.message}`);
+    } catch (error) {
+      const err = error as Error;
+      addLog(`❌ Erro processando tick: ${err.message}`);
     }
   };
 
-  const analyzeSignals = (prices: any[], volumes: number[]) => {
+  const analyzeSignals = (prices: PriceData[], volumes: number[]): SignalAnalysis | null => {
     try {
       if (!prices || prices.length < Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods)) {
         return null;
@@ -364,13 +408,14 @@ export default function BotInterface() {
         confidence,
         finalSignal
       };
-    } catch (error: any) {
-      addLog(`❌ Erro no cálculo de sinais: ${error.message}`);
+    } catch (error) {
+      const err = error as Error;
+      addLog(`❌ Erro no cálculo de sinais: ${err.message}`);
       return null;
     }
   };
 
-  const calculateEMA = (prices: any[], period: number) => {
+  const calculateEMA = (prices: PriceData[], period: number) => {
     if (prices.length < period) return 0;
     const multiplier = 2 / (period + 1);
     let ema = prices.slice(0, period).reduce((sum, candle) => sum + candle.close, 0) / period;
@@ -380,7 +425,7 @@ export default function BotInterface() {
     return ema;
   };
 
-  const calculateRSI = (prices: any[], period: number) => {
+  const calculateRSI = (prices: PriceData[], period: number) => {
     if (prices.length <= period) return 50;
     let gains = 0, losses = 0;
     for (let i = 1; i <= period; i++) {
@@ -395,13 +440,13 @@ export default function BotInterface() {
     return 100 - (100 / (1 + rs));
   };
 
-  const calculateFinalSignal = (signals: any) => {
-    const weights = { mhi: 0.3, trend: 0.3, ema: 0.2, rsi: 0.2, volume: 0.0 };
+  const calculateFinalSignal = (signals: Record<string, string>) => {
+    const weights: Record<string, number> = { mhi: 0.3, trend: 0.3, ema: 0.2, rsi: 0.2, volume: 0.0 };
     let callScore = 0, putScore = 0;
     
     Object.keys(signals).forEach(key => {
-      if (signals[key] === "CALL") callScore += weights[key as keyof typeof weights];
-      else if (signals[key] === "PUT") putScore += weights[key as keyof typeof weights];
+      if (signals[key] === "CALL") callScore += weights[key] || 0;
+      else if (signals[key] === "PUT") putScore += weights[key] || 0;
     });
     
     if (callScore > putScore && callScore > 0.4) return "CALL";
@@ -409,7 +454,7 @@ export default function BotInterface() {
     return "NEUTRO";
   };
 
-  const calculateConfidence = (signals: any, rsi: number) => {
+  const calculateConfidence = (signals: Record<string, string>, rsi: number) => {
     let confidence = 0;
     Object.values(signals).forEach(signal => {
       if (signal !== "NEUTRO") confidence += 20;
@@ -419,7 +464,7 @@ export default function BotInterface() {
     return Math.min(95, confidence);
   };
 
-  const updateSignalsDisplay = (signals: any, confidence: number) => {
+  const updateSignalsDisplay = (signals: Record<string, string>, confidence: number) => {
     setSignals({
       mhi: signals.mhi || "-",
       trend: signals.trend || "-",
@@ -454,7 +499,9 @@ export default function BotInterface() {
     setStats(prev => ({ ...prev, status: `🚀 ${signal} - $${stats.currentStake}` }));
   };
 
-  const handleTradeResult = (contract: any) => {
+  const handleTradeResult = (contract: WebSocketMessage['proposal_open_contract']) => {
+    if (!contract) return;
+    
     const profit = contract.profit;
     const finalSignal = signals.final;
     const confidence = signals.confidence.replace('%', '') || "0";
@@ -761,13 +808,18 @@ export default function BotInterface() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <optgroup label="ÍNDICES">
-                    <SelectItem value="R_10">Volatility 10 Index</SelectItem>
-                    <SelectItem value="R_25">Volatility 25 Index</SelectItem>
-                    <SelectItem value="R_50">Volatility 50 Index</SelectItem>
-                    <SelectItem value="R_75">Volatility 75 Index</SelectItem>
-                    <SelectItem value="R_100">Volatility 100 Index</SelectItem>
-                  </optgroup>
+                  <SelectItem value="R_10">Volatility 10 Index</SelectItem>
+                  <SelectItem value="R_25">Volatility 25 Index</SelectItem>
+                  <SelectItem value="R_50">Volatility 50 Index</SelectItem>
+                  <SelectItem value="R_75">Volatility 75 Index</SelectItem>
+                  <SelectItem value="R_100">Volatility 100 Index</SelectItem>
+                  <SelectItem value="frxEURUSD">EUR/USD</SelectItem>
+                  <SelectItem value="frxGBPUSD">GBP/USD</SelectItem>
+                  <SelectItem value="frxUSDJPY">USD/JPY</SelectItem>
+                  <SelectItem value="frxUSDCHF">USD/CHF</SelectItem>
+                  <SelectItem value="frxAUDUSD">AUD/USD</SelectItem>
+                  <SelectItem value="frxUSDCAD">USD/CAD</SelectItem>
+                  <SelectItem value="frxNZDUSD">NZD/USD</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -910,7 +962,7 @@ export default function BotInterface() {
               <div className="text-gray-500">Aguardando início do bot...</div>
             ) : (
               logs.map((log, index) => (
-                <div key={index} className="mb-1" dangerouslySetInnerHTML={{ __html: log }} />
+                <div key={index} className="mb-1">{log}</div>
               ))
             )}
           </div>
