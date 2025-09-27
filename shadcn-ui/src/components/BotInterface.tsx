@@ -1,685 +1,976 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
 import { 
   Bot, 
   Play, 
   Square, 
-  Settings, 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign,
-  AlertTriangle,
-  CheckCircle,
+  HelpCircle,
   Activity,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
   Target,
-  Shield,
-  Zap,
-  BarChart3
+  AlertTriangle,
+  CheckCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface BotConfig {
-  derivToken: string;
-  accountType: 'demo' | 'real';
+  token: string;
+  stake: number;
+  martingale: number;
+  duration: number;
   symbol: string;
-  amount: number;
-  martingale: boolean;
-  martingaleMultiplier: number;
-  maxMartingaleSteps: number;
+  stopWin: number;
   stopLoss: number;
-  takeProfit: number;
-  maxDailyLoss: number;
-  maxDailyProfit: number;
-  rsiPeriod: number;
-  emaPeriod: number;
-  strategy: 'mhi' | 'ema_rsi' | 'scalping';
+  minConfidence: number;
+  mhiPeriods: number;
+  emaFast: number;
+  emaSlow: number;
+  rsiPeriods: number;
 }
 
-interface TradingStats {
-  totalTrades: number;
-  winRate: number;
-  profit: number;
+interface BotStats {
+  status: string;
   balance: number;
-  isRunning: boolean;
-  lastTrade: {
-    time: string;
-    result: 'win' | 'loss';
-    amount: number;
-    profit: number;
-  } | null;
+  profit: number;
+  accuracy: number;
+  dataCount: number;
+  martingaleLevel: number;
+  currentStake: number;
+  total: number;
+  wins: number;
+  losses: number;
+}
+
+interface TradeHistory {
+  contractId: string;
+  signal: string;
+  confidence: string;
+  stake: number;
+  martingale: number;
+  result: string;
+  profit: number;
+  time: string;
+}
+
+interface Signals {
+  mhi: string;
+  trend: string;
+  ema: string;
+  rsi: string;
+  volume: string;
+  final: string;
+  confidence: string;
 }
 
 export default function BotInterface() {
   const { toast } = useToast();
+  const wsRef = useRef<WebSocket | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isTrading, setIsTrading] = useState(false);
+  const [lastTradeTime, setLastTradeTime] = useState(0);
+  
   const [config, setConfig] = useState<BotConfig>({
-    derivToken: '',
-    accountType: 'demo',
+    token: '',
+    stake: 1,
+    martingale: 2,
+    duration: 2,
     symbol: 'R_50',
-    amount: 1,
-    martingale: false,
-    martingaleMultiplier: 2,
-    maxMartingaleSteps: 3,
-    stopLoss: 50,
-    takeProfit: 100,
-    maxDailyLoss: 100,
-    maxDailyProfit: 200,
-    rsiPeriod: 14,
-    emaPeriod: 21,
-    strategy: 'mhi'
+    stopWin: 10,
+    stopLoss: -20,
+    minConfidence: 75,
+    mhiPeriods: 20,
+    emaFast: 8,
+    emaSlow: 18,
+    rsiPeriods: 10
   });
 
-  const [stats, setStats] = useState<TradingStats>({
-    totalTrades: 0,
-    winRate: 0,
+  const [stats, setStats] = useState<BotStats>({
+    status: 'Aguardando...',
+    balance: 0,
     profit: 0,
-    balance: 1000,
-    isRunning: false,
-    lastTrade: null
+    accuracy: 0,
+    dataCount: 0,
+    martingaleLevel: 0,
+    currentStake: 1,
+    total: 0,
+    wins: 0,
+    losses: 0
+  });
+
+  const [signals, setSignals] = useState<Signals>({
+    mhi: '-',
+    trend: '-',
+    ema: '-',
+    rsi: '-',
+    volume: '-',
+    final: '-',
+    confidence: '-'
   });
 
   const [logs, setLogs] = useState<string[]>([]);
-  const [isConfigured, setIsConfigured] = useState(false);
+  const [history, setHistory] = useState<TradeHistory[]>([]);
+  const [priceData, setPriceData] = useState<any[]>([]);
+  const [volumeData, setVolumeData] = useState<number[]>([]);
+  const logsRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    // Simular dados de trading em tempo real quando o bot está rodando
-    let interval: NodeJS.Timeout;
-    
-    if (stats.isRunning) {
-      interval = setInterval(() => {
-        // Simular uma nova operação a cada 30 segundos
-        const isWin = Math.random() > 0.4; // 60% win rate
-        const tradeProfit = isWin ? config.amount * 0.8 : -config.amount;
-        
-        setStats(prev => ({
-          ...prev,
-          totalTrades: prev.totalTrades + 1,
-          profit: prev.profit + tradeProfit,
-          balance: prev.balance + tradeProfit,
-          winRate: prev.totalTrades > 0 ? 
-            ((prev.winRate * prev.totalTrades + (isWin ? 1 : 0)) / (prev.totalTrades + 1)) * 100 : 
-            (isWin ? 100 : 0),
-          lastTrade: {
-            time: new Date().toLocaleTimeString(),
-            result: isWin ? 'win' : 'loss',
-            amount: config.amount,
-            profit: tradeProfit
-          }
-        }));
+  const WEBSOCKET_ENDPOINTS = [
+    "wss://ws.binaryws.com/websockets/v3",
+    "wss://ws.derivws.com/websockets/v3"
+  ];
 
-        const logMessage = `${new Date().toLocaleTimeString()} - ${isWin ? 'WIN' : 'LOSS'} - ${config.symbol} - $${config.amount} - Profit: $${tradeProfit.toFixed(2)}`;
-        setLogs(prev => [logMessage, ...prev.slice(0, 49)]); // Keep last 50 logs
-      }, 30000); // 30 seconds
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [stats.isRunning, config.amount, config.symbol]);
-
-  const handleConfigChange = <K extends keyof BotConfig>(key: K, value: BotConfig[K]) => {
-    setConfig(prev => ({ ...prev, [key]: value }));
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logMessage = `[${timestamp}] ${message}`;
+    setLogs(prev => [...prev.slice(-49), logMessage]);
   };
 
-  const validateConfig = () => {
-    if (!config.derivToken.trim()) {
-      toast({
-        title: "Token obrigatório",
-        description: "Digite seu token da Deriv para continuar",
-        variant: "destructive"
-      });
-      return false;
+  useEffect(() => {
+    if (logsRef.current) {
+      logsRef.current.scrollTop = logsRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  const connectWebSocket = (token: string, endpointIndex = 0): WebSocket | null => {
+    if (endpointIndex >= WEBSOCKET_ENDPOINTS.length) {
+      addLog("❌ Todos os endpoints falharam.");
+      return null;
     }
 
-    if (config.amount <= 0) {
+    const endpoint = WEBSOCKET_ENDPOINTS[endpointIndex] + "?app_id=1089";
+    
+    try {
+      const ws = new WebSocket(endpoint);
+      
+      ws.onopen = () => {
+        addLog("✅ WebSocket conectado!");
+        setStats(prev => ({ ...prev, status: "🔐 Autenticando..." }));
+        ws.send(JSON.stringify({ authorize: token }));
+      };
+
+      ws.onmessage = (event) => {
+        handleWebSocketMessage(event, ws);
+      };
+
+      ws.onclose = (event) => {
+        if (!event.wasClean && isRunning) {
+          addLog("🔴 Conexão perdida. Reconectando...");
+          setTimeout(() => {
+            const newWs = connectWebSocket(token, endpointIndex + 1);
+            if (newWs) wsRef.current = newWs;
+          }, 2000);
+        }
+      };
+
+      ws.onerror = () => {
+        addLog(`❌ Erro de conexão.`);
+      };
+
+      return ws;
+    } catch (error) {
+      addLog(`❌ Erro ao criar WebSocket`);
+      return null;
+    }
+  };
+
+  const handleWebSocketMessage = (event: MessageEvent, ws: WebSocket) => {
+    try {
+      const data = JSON.parse(event.data);
+
+      if (data.error) {
+        addLog(`❌ ERRO: ${data.error.message}`);
+        if (data.error.code === 'InvalidToken') {
+          setStats(prev => ({ ...prev, status: "❌ Token Inválido" }));
+          handleStop();
+        }
+        return;
+      }
+
+      if (data.msg_type === "authorize") {
+        addLog("🔐 Autenticado com sucesso!");
+        ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
+        ws.send(JSON.stringify({ ticks: config.symbol, subscribe: 1 }));
+        addLog(`📊 Monitorando: ${config.symbol}`);
+      }
+
+      if (data.msg_type === "balance") {
+        const balance = data.balance?.balance || 0;
+        setStats(prev => ({ ...prev, balance }));
+        addLog(`💰 Saldo: $${balance} USD`);
+        
+        if (!isRunning) {
+          setIsRunning(true);
+          addLog("✅ Bot ativo e analisando!");
+          setStats(prev => ({ ...prev, status: "📊 Analisando..." }));
+        }
+      }
+
+      if (data.msg_type === "tick") {
+        processTick(data.tick, ws);
+      }
+
+      if (data.msg_type === "proposal") {
+        addLog(`📋 Proposta recebida`);
+        const buyRequest = { buy: data.proposal.id, price: stats.currentStake };
+        ws.send(JSON.stringify(buyRequest));
+      }
+
+      if (data.msg_type === "buy") {
+        if (data.buy.error) {
+          addLog(`❌ Erro na compra: ${data.buy.error.message}`);
+          setIsTrading(false);
+          return;
+        }
+        
+        addLog(`✅ Contrato ID: ${data.buy.contract_id}`);
+        ws.send(JSON.stringify({ 
+          proposal_open_contract: 1, 
+          subscribe: 1, 
+          contract_id: data.buy.contract_id 
+        }));
+      }
+
+      if (data.msg_type === "proposal_open_contract") {
+        const contract = data.proposal_open_contract;
+        if (contract.is_sold) {
+          handleTradeResult(contract);
+        }
+      }
+
+    } catch (error: any) {
+      addLog(`❌ Erro processando mensagem: ${error.message}`);
+    }
+  };
+
+  const processTick = (tick: any, ws: WebSocket) => {
+    try {
+      if (!tick || !tick.quote) {
+        addLog("⚠️ Tick inválido recebido");
+        return;
+      }
+      
+      const price = parseFloat(tick.quote);
+      const timestamp = Math.floor(Date.now() / 1000);
+      const volume = tick.volume || 1;
+      
+      // Evitar trades muito frequentes
+      const timeSinceLastTrade = Date.now() - lastTradeTime;
+      if (timeSinceLastTrade < 60000 && lastTradeTime > 0) return;
+      
+      // Adicionar dados de preço
+      const newPriceData = [...priceData, { high: price, low: price, close: price, timestamp }];
+      const newVolumeData = [...volumeData, volume];
+      
+      // Manter apenas dados necessários
+      const maxDataPoints = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods) * 2;
+      if (newPriceData.length > maxDataPoints) {
+        setPriceData(newPriceData.slice(-maxDataPoints));
+        setVolumeData(newVolumeData.slice(-maxDataPoints));
+      } else {
+        setPriceData(newPriceData);
+        setVolumeData(newVolumeData);
+      }
+      
+      setStats(prev => ({ ...prev, dataCount: newPriceData.length }));
+      
+      // Analisar sinais se temos dados suficientes
+      if (newPriceData.length >= Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods) && isRunning && !isTrading) {
+        const analysis = analyzeSignals(newPriceData, newVolumeData);
+        
+        if (analysis && analysis.finalSignal !== "NEUTRO" && analysis.confidence >= config.minConfidence) {
+          updateSignalsDisplay(analysis.signals, analysis.confidence);
+          
+          addLog(`🎯 SINAL: ${analysis.finalSignal} (${analysis.confidence}%)`);
+          toast({
+            title: "🎯 Sinal detectado!",
+            description: `${analysis.finalSignal} com ${analysis.confidence}% de confiança`,
+          });
+          
+          setIsTrading(true);
+          executeTrade(analysis.finalSignal, ws);
+        }
+      }
+    } catch (error: any) {
+      addLog(`❌ Erro processando tick: ${error.message}`);
+    }
+  };
+
+  const analyzeSignals = (prices: any[], volumes: number[]) => {
+    try {
+      if (!prices || prices.length < Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods)) {
+        return null;
+      }
+      
+      // MHI Calculation
+      const mhiData = prices.slice(-config.mhiPeriods);
+      let highSum = 0, lowSum = 0, closeSum = 0;
+      mhiData.forEach(candle => {
+        highSum += candle.high;
+        lowSum += candle.low;
+        closeSum += candle.close;
+      });
+      
+      const avgHigh = highSum / config.mhiPeriods;
+      const avgLow = lowSum / config.mhiPeriods;
+      const currentPrice = mhiData[mhiData.length - 1].close;
+      
+      let mhiSignal = "NEUTRO";
+      if (currentPrice > avgHigh) {
+        mhiSignal = "CALL";
+      } else if (currentPrice < avgLow) {
+        mhiSignal = "PUT";
+      }
+      
+      // EMA Calculation
+      const emaFast = calculateEMA(prices, config.emaFast);
+      const emaSlow = calculateEMA(prices, config.emaSlow);
+      
+      let trendSignal = "NEUTRO";
+      if (emaFast > emaSlow && currentPrice > emaFast) {
+        trendSignal = "CALL";
+      } else if (emaFast < emaSlow && currentPrice < emaFast) {
+        trendSignal = "PUT";
+      }
+      
+      // RSI Calculation
+      const rsi = calculateRSI(prices, config.rsiPeriods);
+      let rsiSignal = "NEUTRO";
+      if (rsi < 30) {
+        rsiSignal = "CALL";
+      } else if (rsi > 70) {
+        rsiSignal = "PUT";
+      }
+      
+      const signals = {
+        mhi: mhiSignal,
+        trend: trendSignal,
+        ema: currentPrice > emaFast ? "CALL" : "PUT",
+        rsi: rsiSignal,
+        volume: "NEUTRO"
+      };
+      
+      const finalSignal = calculateFinalSignal(signals);
+      const confidence = calculateConfidence(signals, rsi);
+      
+      return {
+        signals: { ...signals, final: finalSignal },
+        confidence,
+        finalSignal
+      };
+    } catch (error: any) {
+      addLog(`❌ Erro no cálculo de sinais: ${error.message}`);
+      return null;
+    }
+  };
+
+  const calculateEMA = (prices: any[], period: number) => {
+    if (prices.length < period) return 0;
+    const multiplier = 2 / (period + 1);
+    let ema = prices.slice(0, period).reduce((sum, candle) => sum + candle.close, 0) / period;
+    for (let i = period; i < prices.length; i++) {
+      ema = (prices[i].close - ema) * multiplier + ema;
+    }
+    return ema;
+  };
+
+  const calculateRSI = (prices: any[], period: number) => {
+    if (prices.length <= period) return 50;
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+      const change = prices[prices.length - i].close - prices[prices.length - i - 1].close;
+      if (change > 0) gains += change;
+      else losses -= change;
+    }
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return 100 - (100 / (1 + rs));
+  };
+
+  const calculateFinalSignal = (signals: any) => {
+    const weights = { mhi: 0.3, trend: 0.3, ema: 0.2, rsi: 0.2, volume: 0.0 };
+    let callScore = 0, putScore = 0;
+    
+    Object.keys(signals).forEach(key => {
+      if (signals[key] === "CALL") callScore += weights[key as keyof typeof weights];
+      else if (signals[key] === "PUT") putScore += weights[key as keyof typeof weights];
+    });
+    
+    if (callScore > putScore && callScore > 0.4) return "CALL";
+    if (putScore > callScore && putScore > 0.4) return "PUT";
+    return "NEUTRO";
+  };
+
+  const calculateConfidence = (signals: any, rsi: number) => {
+    let confidence = 0;
+    Object.values(signals).forEach(signal => {
+      if (signal !== "NEUTRO") confidence += 20;
+    });
+    if (rsi < 20 || rsi > 80) confidence += 10;
+    else if (rsi < 30 || rsi > 70) confidence += 5;
+    return Math.min(95, confidence);
+  };
+
+  const updateSignalsDisplay = (signals: any, confidence: number) => {
+    setSignals({
+      mhi: signals.mhi || "-",
+      trend: signals.trend || "-",
+      ema: signals.ema || "-",
+      rsi: signals.rsi || "-",
+      volume: signals.volume || "-",
+      final: signals.final || "-",
+      confidence: confidence ? `${confidence}%` : "-"
+    });
+  };
+
+  const executeTrade = (signal: string, ws: WebSocket) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      addLog("❌ WebSocket não conectado!");
+      return;
+    }
+    
+    addLog(`🚀 EXECUTANDO: ${signal} - $${stats.currentStake}`);
+    
+    const proposal = {
+      proposal: 1,
+      amount: stats.currentStake,
+      basis: "stake",
+      contract_type: signal,
+      currency: "USD",
+      duration: config.duration,
+      duration_unit: "m",
+      symbol: config.symbol
+    };
+
+    ws.send(JSON.stringify(proposal));
+    setStats(prev => ({ ...prev, status: `🚀 ${signal} - $${stats.currentStake}` }));
+  };
+
+  const handleTradeResult = (contract: any) => {
+    const profit = contract.profit;
+    const finalSignal = signals.final;
+    const confidence = signals.confidence.replace('%', '') || "0";
+
+    setStats(prev => ({
+      ...prev,
+      profit: prev.profit + profit,
+      total: prev.total + 1,
+      wins: profit >= 0 ? prev.wins + 1 : prev.wins,
+      losses: profit < 0 ? prev.losses + 1 : prev.losses,
+      accuracy: prev.total > 0 ? ((profit >= 0 ? prev.wins + 1 : prev.wins) / (prev.total + 1)) * 100 : 0
+    }));
+
+    addTradeToHistory(contract.contract_id, finalSignal, confidence, stats.currentStake, stats.martingaleLevel, profit >= 0 ? "WIN" : "LOSS", profit);
+
+    addLog(`📊 Resultado: ${profit >= 0 ? 'WIN' : 'LOSS'} | Entrada: ${stats.currentStake} | Lucro: ${profit.toFixed(2)} USD`);
+    
+    // Toast notification
+    if (profit >= 0) {
       toast({
-        title: "Valor inválido",
-        description: "O valor da aposta deve ser maior que zero",
+        title: "🎉 WIN!",
+        description: `Lucro: +${profit.toFixed(2)}`,
+      });
+    } else {
+      toast({
+        title: "📉 Loss",
+        description: `Prejuízo: ${profit.toFixed(2)}`,
         variant: "destructive"
       });
-      return false;
     }
 
+    // Martingale logic
+    if (profit < 0) {
+      const newMartingaleLevel = stats.martingaleLevel + 1;
+      addLog(`🔴 Perda ${newMartingaleLevel}/3`);
+      
+      const newStake = calculateMartingaleStake();
+      
+      if (validateMartingaleStake(newStake) && newMartingaleLevel < 3) {
+        setStats(prev => ({ 
+          ...prev, 
+          currentStake: newStake,
+          martingaleLevel: newMartingaleLevel
+        }));
+        addLog(`📈 Nova entrada: $${newStake} ($${newStake/config.martingale} × ${config.martingale})`);
+      } else {
+        setStats(prev => ({ 
+          ...prev, 
+          martingaleLevel: 0,
+          currentStake: config.stake
+        }));
+        addLog("🔄 Martingale resetado (limite máximo)");
+      }
+    } else {
+      setStats(prev => ({ 
+        ...prev, 
+        martingaleLevel: 0,
+        currentStake: config.stake
+      }));
+      addLog(`✅ WIN! Reset para entrada inicial: $${config.stake}`);
+    }
+
+    // Check stop conditions
+    if (stats.profit + profit >= config.stopWin) {
+      addLog("🎯 STOP WIN atingido! Parando bot.");
+      toast({
+        title: "🎯 Stop Win atingido!",
+        description: `Lucro total: ${(stats.profit + profit).toFixed(2)}`,
+      });
+      handleStop();
+    } else if (stats.profit + profit <= config.stopLoss) {
+      addLog("💀 STOP LOSS atingido! Parando bot.");
+      toast({
+        title: "⛔ Stop Loss atingido!",
+        description: `Prejuízo: ${(stats.profit + profit).toFixed(2)}`,
+        variant: "destructive"
+      });
+      handleStop();
+    } else {
+      addLog("🔄 Aguardando próximo sinal...");
+      setStats(prev => ({ ...prev, status: "📊 Analisando..." }));
+      setIsTrading(false);
+      setLastTradeTime(Date.now());
+    }
+  };
+
+  const calculateMartingaleStake = () => {
+    const newStake = stats.currentStake * config.martingale;
+    const maxMartingale = config.stake * Math.pow(config.martingale, 3);
+    const maxBalancePercent = stats.balance * 0.3;
+    
+    let finalStake = Math.min(newStake, maxMartingale, maxBalancePercent);
+    finalStake = Math.max(finalStake, 1);
+    return Math.round(finalStake);
+  };
+
+  const validateMartingaleStake = (stake: number) => {
+    if (stats.martingaleLevel >= 3) {
+      addLog("🚫 Máximo de 3 martingales atingido!");
+      return false;
+    }
+    
+    if (stake > stats.balance * 0.5) {
+      addLog(`⚠️ Stake muito alto para o saldo!`);
+      return false;
+    }
+    
     return true;
   };
 
-  const handleSaveConfig = () => {
-    if (validateConfig()) {
-      setIsConfigured(true);
-      toast({
-        title: "Configuração salva!",
-        description: "Bot configurado e pronto para iniciar",
-      });
-      
-      // Simular conexão com a Deriv
-      const logMessage = `${new Date().toLocaleTimeString()} - Bot configurado - Conta: ${config.accountType.toUpperCase()} - Token: ${config.derivToken.slice(0, 8)}...`;
-      setLogs(prev => [logMessage, ...prev]);
-    }
+  const addTradeToHistory = (contractId: string, signal: string, confidence: string, stake: number, martingale: number, result: string, profit: number) => {
+    const trade: TradeHistory = {
+      contractId,
+      signal,
+      confidence,
+      stake,
+      martingale,
+      result,
+      profit,
+      time: new Date().toLocaleTimeString()
+    };
+    setHistory(prev => [trade, ...prev.slice(0, 49)]);
   };
 
-  const handleStartBot = () => {
-    if (!isConfigured) {
+  const handleStart = () => {
+    if (isRunning) {
       toast({
-        title: "Configure primeiro",
-        description: "Salve as configurações antes de iniciar o bot",
+        title: "Bot já está em execução!",
         variant: "destructive"
       });
       return;
     }
 
-    setStats(prev => ({ ...prev, isRunning: true }));
+    const token = config.token.trim();
+    if (!token) {
+      toast({
+        title: "Token da Deriv é obrigatório!",
+        description: "Digite seu token para conectar",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Reset data
+    setPriceData([]);
+    setVolumeData([]);
+    setIsTrading(false);
+    setStats(prev => ({ 
+      ...prev, 
+      martingaleLevel: 0,
+      currentStake: config.stake,
+      profit: 0,
+      total: 0,
+      wins: 0,
+      losses: 0,
+      accuracy: 0
+    }));
+
+    addLog(`🚀 Iniciando Bot - Par: ${config.symbol} | Entrada: ${config.stake} | Martingale: ${config.martingale}x`);
+    setStats(prev => ({ ...prev, status: "🔄 Conectando..." }));
+    
     toast({
       title: "Bot iniciado!",
-      description: `Trading iniciado em conta ${config.accountType === 'real' ? 'REAL' : 'DEMO'}`,
+      description: `Monitorando ${config.symbol}`,
     });
 
-    const logMessage = `${new Date().toLocaleTimeString()} - BOT INICIADO - Estratégia: ${config.strategy.toUpperCase()} - Conta: ${config.accountType.toUpperCase()}`;
-    setLogs(prev => [logMessage, ...prev]);
+    const ws = connectWebSocket(token);
+    if (ws) {
+      wsRef.current = ws;
+    }
   };
 
-  const handleStopBot = () => {
-    setStats(prev => ({ ...prev, isRunning: false }));
+  const handleStop = () => {
+    setIsRunning(false);
+    setIsTrading(false);
+    
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({ forget_all: "ticks" }));
+        wsRef.current.send(JSON.stringify({ forget_all: "proposal_open_contract" }));
+        
+        setTimeout(() => {
+          if (wsRef.current) {
+            wsRef.current.close();
+          }
+        }, 500);
+      } catch (error) {
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+      }
+    }
+    
+    addLog("⏹ Bot parado com sucesso!");
+    setStats(prev => ({ ...prev, status: "⏹ Parado" }));
     toast({
       title: "Bot parado",
-      description: "Trading interrompido com sucesso",
+      description: "Sistema interrompido com sucesso",
     });
-
-    const logMessage = `${new Date().toLocaleTimeString()} - BOT PARADO - Total de trades: ${stats.totalTrades}`;
-    setLogs(prev => [logMessage, ...prev]);
   };
 
-  const getStrategyDescription = (strategy: string) => {
-    const descriptions = {
-      mhi: 'Market Hours Indicator - Análise baseada em horários de mercado',
-      ema_rsi: 'EMA + RSI - Combinação de médias móveis e índice de força relativa',
-      scalping: 'Scalping - Operações rápidas com pequenos lucros'
-    };
-    return descriptions[strategy as keyof typeof descriptions] || strategy;
+  const handleHelp = () => {
+    toast({
+      title: "Ajuda - Bot MVB Pro",
+      description: "Sistema de trading automatizado com estratégias avançadas. Configure seu token da Deriv e ajuste os parâmetros conforme sua estratégia.",
+    });
   };
 
   return (
     <div className="space-y-6">
-      {/* Status Header */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Strategy Info */}
+      <Card className="border-blue-200 bg-blue-50/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-blue-600" />
+            🤖 Bot MVB - Estratégia MHI Avançada com Tendência
+          </CardTitle>
+          <CardDescription>
+            Combina MHI tradicional com EMA, RSI, Volume e Análise de Tendência para máxima precisão
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            <div className="text-center p-3 bg-white rounded-lg border">
+              <div className="text-sm font-medium text-gray-600">MHI Básico</div>
+              <div className="text-lg font-bold text-blue-600">{signals.mhi}</div>
+            </div>
+            <div className="text-center p-3 bg-white rounded-lg border">
+              <div className="text-sm font-medium text-gray-600">Tendência</div>
+              <div className="text-lg font-bold text-green-600">{signals.trend}</div>
+            </div>
+            <div className="text-center p-3 bg-white rounded-lg border">
+              <div className="text-sm font-medium text-gray-600">EMA Rápida</div>
+              <div className="text-lg font-bold text-purple-600">{signals.ema}</div>
+            </div>
+            <div className="text-center p-3 bg-white rounded-lg border">
+              <div className="text-sm font-medium text-gray-600">RSI</div>
+              <div className="text-lg font-bold text-orange-600">{signals.rsi}</div>
+            </div>
+            <div className="text-center p-3 bg-white rounded-lg border">
+              <div className="text-sm font-medium text-gray-600">Volume Relativo</div>
+              <div className="text-lg font-bold text-indigo-600">{signals.volume}</div>
+            </div>
+            <div className="text-center p-3 bg-white rounded-lg border">
+              <div className="text-sm font-medium text-gray-600">Confiança</div>
+              <div className="text-lg font-bold text-cyan-600">{signals.confidence}</div>
+            </div>
+            <div className="text-center p-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg">
+              <div className="text-sm font-medium">Sinal Final</div>
+              <div className="text-lg font-bold">{signals.final}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Configuration */}
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Status</p>
-                <div className="flex items-center space-x-2">
-                  {stats.isRunning ? (
-                    <>
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                      <span className="font-semibold text-green-600">Ativo</span>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full" />
-                      <span className="font-semibold text-gray-600">Parado</span>
-                    </>
-                  )}
+          <CardHeader>
+            <CardTitle>Configuração Principal</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="token">Token API Deriv</Label>
+              <Input
+                id="token"
+                type="password"
+                placeholder="Cole seu token da Deriv"
+                value={config.token}
+                onChange={(e) => setConfig({ ...config, token: e.target.value })}
+                disabled={isRunning}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="stake">Entrada (USD)</Label>
+                <Input
+                  id="stake"
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={config.stake}
+                  onChange={(e) => setConfig({ ...config, stake: Number(e.target.value) })}
+                  disabled={isRunning}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="martingale">Multiplicador Martingale</Label>
+                <Input
+                  id="martingale"
+                  type="number"
+                  min="2"
+                  max="5"
+                  value={config.martingale}
+                  onChange={(e) => setConfig({ ...config, martingale: Number(e.target.value) })}
+                  disabled={isRunning}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="symbol">Símbolo</Label>
+              <Select value={config.symbol} onValueChange={(value) => setConfig({ ...config, symbol: value })} disabled={isRunning}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <optgroup label="ÍNDICES">
+                    <SelectItem value="R_10">Volatility 10 Index</SelectItem>
+                    <SelectItem value="R_25">Volatility 25 Index</SelectItem>
+                    <SelectItem value="R_50">Volatility 50 Index</SelectItem>
+                    <SelectItem value="R_75">Volatility 75 Index</SelectItem>
+                    <SelectItem value="R_100">Volatility 100 Index</SelectItem>
+                  </optgroup>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Controles de Risco</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="stopWin">Stop Win (lucro)</Label>
+                <Input
+                  id="stopWin"
+                  type="number"
+                  value={config.stopWin}
+                  onChange={(e) => setConfig({ ...config, stopWin: Number(e.target.value) })}
+                  disabled={isRunning}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="stopLoss">Stop Loss (prejuízo)</Label>
+                <Input
+                  id="stopLoss"
+                  type="number"
+                  value={config.stopLoss}
+                  onChange={(e) => setConfig({ ...config, stopLoss: Number(e.target.value) })}
+                  disabled={isRunning}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="minConfidence">Confiança Mínima (%)</Label>
+              <Input
+                id="minConfidence"
+                type="number"
+                min="50"
+                max="95"
+                value={config.minConfidence}
+                onChange={(e) => setConfig({ ...config, minConfidence: Number(e.target.value) })}
+                disabled={isRunning}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="duration">Duração (minutos)</Label>
+              <Input
+                id="duration"
+                type="number"
+                min="1"
+                max="5"
+                value={config.duration}
+                onChange={(e) => setConfig({ ...config, duration: Number(e.target.value) })}
+                disabled={isRunning}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Status do Sistema</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm text-gray-600">Status</div>
+                <Badge variant={isRunning ? "default" : "secondary"}>
+                  {stats.status}
+                </Badge>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm text-gray-600">Saldo</div>
+                <div className="font-bold text-green-600">${stats.balance}</div>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm text-gray-600">Lucro</div>
+                <div className={`font-bold ${stats.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  ${stats.profit.toFixed(2)}
                 </div>
               </div>
-              <Activity className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Saldo</p>
-                <p className="text-lg font-bold">${stats.balance.toFixed(2)}</p>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm text-gray-600">Assertividade</div>
+                <div className="font-bold text-blue-600">{stats.accuracy.toFixed(1)}%</div>
               </div>
-              <DollarSign className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Lucro/Prejuízo</p>
-                <p className={`text-lg font-bold ${stats.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  ${stats.profit.toFixed(2)}
-                </p>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm text-gray-600">Dados Coletados</div>
+                <div className="font-bold text-purple-600">{stats.dataCount}</div>
               </div>
-              {stats.profit >= 0 ? (
-                <TrendingUp className="h-8 w-8 text-green-500" />
-              ) : (
-                <TrendingDown className="h-8 w-8 text-red-500" />
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Taxa de Acerto</p>
-                <p className="text-lg font-bold">{stats.winRate.toFixed(1)}%</p>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm text-gray-600">Martingale</div>
+                <div className="font-bold text-orange-600">{stats.martingaleLevel}/3</div>
               </div>
-              <Target className="h-8 w-8 text-purple-500" />
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm text-gray-600">Entrada Atual</div>
+                <div className="font-bold text-indigo-600">${stats.currentStake}</div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                onClick={handleStart} 
+                disabled={isRunning}
+                className="flex-1"
+              >
+                <Play className="mr-2 h-4 w-4" />
+                ▶ Iniciar Bot
+              </Button>
+              <Button 
+                onClick={handleStop} 
+                disabled={!isRunning}
+                variant="destructive"
+                className="flex-1"
+              >
+                <Square className="mr-2 h-4 w-4" />
+                ⏹ Parar
+              </Button>
+              <Button 
+                onClick={handleHelp}
+                variant="outline"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </Button>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="config" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="config">Configurações</TabsTrigger>
-          <TabsTrigger value="control">Controle</TabsTrigger>
-          <TabsTrigger value="stats">Estatísticas</TabsTrigger>
-          <TabsTrigger value="logs">Logs</TabsTrigger>
-        </TabsList>
+      {/* Logs */}
+      <Card>
+        <CardHeader>
+          <CardTitle>📋 Log Detalhado</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div 
+            ref={logsRef}
+            className="bg-black text-green-400 p-4 rounded-lg h-64 overflow-y-auto font-mono text-sm"
+          >
+            {logs.length === 0 ? (
+              <div className="text-gray-500">Aguardando início do bot...</div>
+            ) : (
+              logs.map((log, index) => (
+                <div key={index} className="mb-1" dangerouslySetInnerHTML={{ __html: log }} />
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
-        <TabsContent value="config" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Settings className="h-5 w-5" />
-                <span>Configurações do Bot</span>
-              </CardTitle>
-              <CardDescription>
-                Configure os parâmetros de trading do seu bot
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Conexão */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center space-x-2">
-                  <Shield className="h-5 w-5" />
-                  <span>Conexão</span>
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="derivToken">Token da Deriv</Label>
-                    <Input
-                      id="derivToken"
-                      type="password"
-                      placeholder="Digite seu token da Deriv"
-                      value={config.derivToken}
-                      onChange={(e) => handleConfigChange('derivToken', e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="accountType">Tipo de Conta</Label>
-                    <Select value={config.accountType} onValueChange={(value: 'demo' | 'real') => handleConfigChange('accountType', value)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="demo">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                            <span>Demo (Simulação)</span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="real">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-2 h-2 bg-red-500 rounded-full" />
-                            <span>Real (Dinheiro Real)</span>
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                
-                {config.accountType === 'real' && (
-                  <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      <strong>ATENÇÃO:</strong> Você está configurando para operar com dinheiro real. 
-                      Certifique-se de que entende os riscos envolvidos no trading automatizado.
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Estratégia */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center space-x-2">
-                  <BarChart3 className="h-5 w-5" />
-                  <span>Estratégia</span>
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="strategy">Estratégia de Trading</Label>
-                    <Select value={config.strategy} onValueChange={(value: 'mhi' | 'ema_rsi' | 'scalping') => handleConfigChange('strategy', value)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="mhi">MHI (Market Hours Indicator)</SelectItem>
-                        <SelectItem value="ema_rsi">EMA + RSI</SelectItem>
-                        <SelectItem value="scalping">Scalping</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-gray-500">
-                      {getStrategyDescription(config.strategy)}
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="symbol">Ativo</Label>
-                    <Select value={config.symbol} onValueChange={(value) => handleConfigChange('symbol', value)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="R_50">Volatility 50 Index</SelectItem>
-                        <SelectItem value="R_75">Volatility 75 Index</SelectItem>
-                        <SelectItem value="R_100">Volatility 100 Index</SelectItem>
-                        <SelectItem value="BOOM500">Boom 500 Index</SelectItem>
-                        <SelectItem value="CRASH500">Crash 500 Index</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Parâmetros de Trading */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center space-x-2">
-                  <Zap className="h-5 w-5" />
-                  <span>Parâmetros de Trading</span>
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="amount">Valor da Aposta ($)</Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      min="0.35"
-                      step="0.01"
-                      value={config.amount}
-                      onChange={(e) => handleConfigChange('amount', parseFloat(e.target.value) || 0)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="stopLoss">Stop Loss ($)</Label>
-                    <Input
-                      id="stopLoss"
-                      type="number"
-                      min="0"
-                      value={config.stopLoss}
-                      onChange={(e) => handleConfigChange('stopLoss', parseFloat(e.target.value) || 0)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="takeProfit">Take Profit ($)</Label>
-                    <Input
-                      id="takeProfit"
-                      type="number"
-                      min="0"
-                      value={config.takeProfit}
-                      onChange={(e) => handleConfigChange('takeProfit', parseFloat(e.target.value) || 0)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Martingale */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold">Martingale</h3>
-                    <p className="text-sm text-gray-600">Dobrar aposta após perdas</p>
-                  </div>
-                  <Switch
-                    checked={config.martingale}
-                    onCheckedChange={(checked) => handleConfigChange('martingale', checked)}
-                  />
-                </div>
-                
-                {config.martingale && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="martingaleMultiplier">Multiplicador</Label>
-                      <Input
-                        id="martingaleMultiplier"
-                        type="number"
-                        min="1.1"
-                        step="0.1"
-                        value={config.martingaleMultiplier}
-                        onChange={(e) => handleConfigChange('martingaleMultiplier', parseFloat(e.target.value) || 2)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="maxMartingaleSteps">Máximo de Passos</Label>
-                      <Input
-                        id="maxMartingaleSteps"
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={config.maxMartingaleSteps}
-                        onChange={(e) => handleConfigChange('maxMartingaleSteps', parseInt(e.target.value) || 3)}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Indicadores Técnicos */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Indicadores Técnicos</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="rsiPeriod">Período RSI</Label>
-                    <Input
-                      id="rsiPeriod"
-                      type="number"
-                      min="5"
-                      max="50"
-                      value={config.rsiPeriod}
-                      onChange={(e) => handleConfigChange('rsiPeriod', parseInt(e.target.value) || 14)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="emaPeriod">Período EMA</Label>
-                    <Input
-                      id="emaPeriod"
-                      type="number"
-                      min="5"
-                      max="100"
-                      value={config.emaPeriod}
-                      onChange={(e) => handleConfigChange('emaPeriod', parseInt(e.target.value) || 21)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4">
-                <Button onClick={handleSaveConfig} className="w-full" size="lg">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Salvar Configurações
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="control">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Bot className="h-5 w-5" />
-                <span>Controle do Bot</span>
-              </CardTitle>
-              <CardDescription>
-                Inicie ou pare o bot de trading
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="text-center space-y-4">
-                <div className="flex justify-center space-x-4">
-                  <Button
-                    onClick={handleStartBot}
-                    disabled={stats.isRunning || !isConfigured}
-                    className="flex items-center space-x-2"
-                    size="lg"
-                  >
-                    <Play className="h-5 w-5" />
-                    <span>Iniciar Bot</span>
-                  </Button>
-                  
-                  <Button
-                    onClick={handleStopBot}
-                    disabled={!stats.isRunning}
-                    variant="destructive"
-                    className="flex items-center space-x-2"
-                    size="lg"
-                  >
-                    <Square className="h-5 w-5" />
-                    <span>Parar Bot</span>
-                  </Button>
-                </div>
-
-                {!isConfigured && (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      Configure e salve os parâmetros antes de iniciar o bot.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {isConfigured && (
-                  <Alert>
-                    <CheckCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      Bot configurado e pronto para operar em conta <strong>{config.accountType.toUpperCase()}</strong>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-
-              {stats.lastTrade && (
-                <div className="border rounded-lg p-4">
-                  <h4 className="font-semibold mb-2">Última Operação</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-600">Horário</p>
-                      <p className="font-medium">{stats.lastTrade.time}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Resultado</p>
-                      <Badge variant={stats.lastTrade.result === 'win' ? 'default' : 'destructive'}>
-                        {stats.lastTrade.result === 'win' ? 'GANHOU' : 'PERDEU'}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Valor</p>
-                      <p className="font-medium">${stats.lastTrade.amount}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Lucro/Prejuízo</p>
-                      <p className={`font-medium ${stats.lastTrade.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ${stats.lastTrade.profit.toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="stats">
-          <Card>
-            <CardHeader>
-              <CardTitle>Estatísticas de Performance</CardTitle>
-              <CardDescription>
-                Acompanhe o desempenho do seu bot de trading
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span>Total de Trades:</span>
-                    <span className="font-bold">{stats.totalTrades}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Taxa de Acerto:</span>
-                    <span className="font-bold">{stats.winRate.toFixed(1)}%</span>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span>Win Rate</span>
-                      <span>{stats.winRate.toFixed(1)}%</span>
-                    </div>
-                    <Progress value={stats.winRate} className="h-2" />
-                  </div>
-                </div>
-                
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span>Saldo Atual:</span>
-                    <span className="font-bold">${stats.balance.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Lucro Total:</span>
-                    <span className={`font-bold ${stats.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ${stats.profit.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>ROI:</span>
-                    <span className={`font-bold ${stats.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {((stats.profit / 1000) * 100).toFixed(2)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="logs">
-          <Card>
-            <CardHeader>
-              <CardTitle>Logs do Sistema</CardTitle>
-              <CardDescription>
-                Acompanhe todas as atividades do bot em tempo real
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="bg-black text-green-400 p-4 rounded-lg font-mono text-sm h-96 overflow-y-auto">
-                {logs.length === 0 ? (
-                  <p className="text-gray-500">Nenhum log disponível. Inicie o bot para ver as atividades.</p>
-                ) : (
-                  logs.map((log, index) => (
-                    <div key={index} className="mb-1">
-                      {log}
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      {/* Trading History */}
+      <Card>
+        <CardHeader>
+          <CardTitle>📊 Histórico de Operações</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {history.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              Nenhuma operação realizada ainda
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2">Contrato</th>
+                    <th className="text-left p-2">Sinal</th>
+                    <th className="text-left p-2">Confiança</th>
+                    <th className="text-left p-2">Entrada</th>
+                    <th className="text-left p-2">Martingale</th>
+                    <th className="text-left p-2">Resultado</th>
+                    <th className="text-left p-2">Lucro</th>
+                    <th className="text-left p-2">Hora</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((trade, index) => (
+                    <tr key={index} className="border-b">
+                      <td className="p-2">{trade.contractId}</td>
+                      <td className="p-2">
+                        <Badge variant={trade.signal === 'CALL' ? 'default' : 'destructive'}>
+                          {trade.signal}
+                        </Badge>
+                      </td>
+                      <td className="p-2">{trade.confidence}%</td>
+                      <td className="p-2">${trade.stake}</td>
+                      <td className="p-2">{trade.martingale}/3</td>
+                      <td className="p-2">
+                        <Badge variant={trade.result === 'WIN' ? 'default' : 'destructive'}>
+                          {trade.result}
+                        </Badge>
+                      </td>
+                      <td className={`p-2 font-bold ${trade.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ${trade.profit.toFixed(2)}
+                      </td>
+                      <td className="p-2">{trade.time}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
