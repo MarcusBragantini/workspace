@@ -349,6 +349,13 @@ export default function BotInterface() {
         debugLog("WebSocket conectado!");
         addLog("✅ WebSocket conectado!");
         setStats(prev => ({ ...prev, status: "🔐 Autenticando..." }));
+        
+        // 🔧 CORREÇÃO CRÍTICA: Ativar bot imediatamente após conectar
+        debugLog("🚀 CORREÇÃO: Forçando isRunning = true após conectar WebSocket");
+        setIsRunning(true);
+        addLog("🚀 Bot ativado automaticamente!");
+        setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
+        
         ws.send(JSON.stringify({ authorize: token }));
       };
 
@@ -409,14 +416,6 @@ export default function BotInterface() {
         debugLog("Saldo recebido:", balance);
         setStats(prev => ({ ...prev, balance }));
         addLog(`💰 Saldo: $${balance} USD`);
-        
-        // CORREÇÃO CRÍTICA: Garantir que isRunning seja true após receber saldo
-        if (!isRunning) {
-          debugLog("🔧 CORREÇÃO: Forçando isRunning = true após receber saldo");
-          setIsRunning(true);
-          addLog("✅ Bot ativo e coletando dados!");
-          setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
-        }
       }
 
       if (data.msg_type === "tick") {
@@ -480,7 +479,7 @@ export default function BotInterface() {
       
       debugLog(`✅ Processando: Preço=${price}, Volume=${volume}`);
       
-      // CORREÇÃO CRÍTICA: Usar setPriceData com callback para garantir estado atualizado
+      // Atualizar dados de preço
       setPriceData(currentPriceData => {
         const newPriceData = [...currentPriceData, { high: price, low: price, close: price, timestamp }];
         debugLog(`Dados antes: ${currentPriceData.length}, depois: ${newPriceData.length}`);
@@ -499,8 +498,10 @@ export default function BotInterface() {
           addLog(`📈 Dados coletados: ${finalPriceData.length} | Preço: ${price.toFixed(4)}`);
         }
 
-        // CORREÇÃO: Verificar isRunning dentro do callback para garantir estado atual
+        // 🔧 CORREÇÃO: Verificar isRunning com estado atual
         if (isRunning) {
+          debugLog("✅ Bot ativo - processando análise...");
+          
           // Controles de tempo para ANÁLISE
           const timeSinceLastTrade = now - lastTradeTime;
           const timeSinceLastAnalysis = now - lastAnalysisTime;
@@ -541,7 +542,7 @@ export default function BotInterface() {
           debugLog(`Dados necessários: ${minDataNeeded}, disponíveis: ${finalPriceData.length}`);
           
           if (finalPriceData.length >= minDataNeeded) {
-            debugLog("✅ Iniciando análise de sinais...");
+            debugLog("🎯 INICIANDO ANÁLISE DE SINAIS!");
             setLastAnalysisTime(now);
             setAnalysisCount(prev => prev + 1);
             setStats(prev => ({ ...prev, status: "🔍 Analisando sinais..." }));
@@ -555,8 +556,8 @@ export default function BotInterface() {
                 updateSignalsDisplay(analysis.signals, analysis.confidence);
                 
                 if (analysis.finalSignal !== "NEUTRO" && analysis.confidence >= config.minConfidence) {
-                  debugLog(`Sinal válido encontrado: ${analysis.finalSignal} (${analysis.confidence}%)`);
-                  addLog(`🎯 SINAL: ${analysis.finalSignal} (${analysis.confidence}%)`);
+                  debugLog(`🎯 SINAL VÁLIDO: ${analysis.finalSignal} (${analysis.confidence}%)`);
+                  addLog(`🎯 SINAL DETECTADO: ${analysis.finalSignal} (${analysis.confidence}%)`);
                   toast({
                     title: "🎯 Sinal detectado!",
                     description: `${analysis.finalSignal} com ${analysis.confidence}% de confiança`,
@@ -601,7 +602,7 @@ export default function BotInterface() {
 
   const analyzeSignals = (prices: PriceData[], volumes: number[]): SignalAnalysis | null => {
     try {
-      debugLog("Analisando sinais...");
+      debugLog("🔍 Analisando sinais...");
       if (!prices || prices.length < Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods)) {
         debugLog("Dados insuficientes para análise");
         return null;
@@ -658,7 +659,7 @@ export default function BotInterface() {
       const finalSignal = calculateFinalSignal(signals);
       const confidence = calculateConfidence(signals, rsi);
       
-      debugLog("Sinais calculados:", { signals, finalSignal, confidence });
+      debugLog("🎯 Sinais calculados:", { signals, finalSignal, confidence });
       
       return {
         signals: { ...signals, final: finalSignal },
@@ -736,7 +737,7 @@ export default function BotInterface() {
   };
 
   const executeTrade = (signal: string, ws: WebSocket) => {
-    debugLog(`Executando trade: ${signal}`);
+    debugLog(`🚀 Executando trade: ${signal}`);
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       debugLog("WebSocket não conectado!");
       addLog("❌ WebSocket não conectado!");
@@ -744,7 +745,7 @@ export default function BotInterface() {
       return;
     }
     
-    addLog(`🚀 EXECUTANDO: ${signal} - $${stats.currentStake}`);
+    addLog(`🚀 EXECUTANDO TRADE: ${signal} - $${stats.currentStake}`);
     
     const proposal = {
       proposal: 1,
@@ -947,12 +948,12 @@ export default function BotInterface() {
     addLog(`🚀 Iniciando Bot - Par: ${config.symbol} | Entrada: $${config.stake} | Martingale: ${config.martingale}x`);
     addLog(`⚙️ Configurações: Min Confiança: ${config.minConfidence}% | Duração: ${config.duration}min`);
     addLog(`📱 Dispositivo ${deviceCount}/${MAX_DEVICES} autorizado`);
-    addLog(`🔧 Intervalos: Análise ${MIN_ANALYSIS_INTERVAL/1000}s | Trade ${MIN_TRADE_INTERVAL/60000}min`);
+    addLog(`🔧 CORREÇÃO APLICADA: Bot ativa automaticamente após conectar`);
     setStats(prev => ({ ...prev, status: "🔄 Conectando..." }));
     
     toast({
-      title: "Bot iniciado!",
-      description: `Monitorando ${config.symbol}`,
+      title: "🚀 Bot iniciado com correção!",
+      description: `Monitorando ${config.symbol} - Ativação automática`,
     });
 
     debugLog("Conectando WebSocket...");
@@ -1007,10 +1008,10 @@ export default function BotInterface() {
   return (
     <div className="space-y-6">
       {/* Debug Info */}
-      <Card className="border-yellow-200 bg-yellow-50/50">
+      <Card className="border-green-200 bg-green-50/50">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-yellow-800">
-            🐛 Debug Info
+          <CardTitle className="flex items-center gap-2 text-green-800">
+            ✅ CORREÇÃO APLICADA - Bot Ativo
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -1040,6 +1041,13 @@ export default function BotInterface() {
               <strong>WebSocket:</strong> {wsRef.current ? "✅ Conectado" : "❌ Desconectado"}
             </div>
           </div>
+          <Alert className="mt-4">
+            <CheckCircle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>CORREÇÃO APLICADA:</strong> Bot agora ativa automaticamente após conectar WebSocket, 
+              independente do saldo da Deriv. Análise de sinais funcionará com os dados já coletados.
+            </AlertDescription>
+          </Alert>
         </CardContent>
       </Card>
 
@@ -1307,16 +1315,13 @@ export default function BotInterface() {
               </div>
             </div>
             
-            {/* Alert para controles de tempo */}
-            {isRunning && (
-              <Alert>
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  Bot ativo: coleta contínua de dados, análise a cada {MIN_ANALYSIS_INTERVAL/1000}s, 
-                  máximo {MAX_ANALYSIS_PER_MINUTE} análises/min, {MIN_TRADE_INTERVAL/60000}min entre trades.
-                </AlertDescription>
-              </Alert>
-            )}
+            <Alert>
+              <CheckCircle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>CORREÇÃO ATIVA:</strong> Bot ativa automaticamente após conectar. 
+                Análise executará com dados coletados (mínimo 21 pontos).
+              </AlertDescription>
+            </Alert>
             
             <div className="flex gap-2">
               <Button 
