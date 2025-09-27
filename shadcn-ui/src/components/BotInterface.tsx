@@ -126,7 +126,7 @@ export default function BotInterface() {
     };
   }, [stats.isRunning, config.amount, config.symbol]);
 
-  const handleConfigChange = (key: keyof BotConfig, value: any) => {
+  const handleConfigChange = <K extends keyof BotConfig>(key: K, value: BotConfig[K]) => {
     setConfig(prev => ({ ...prev, [key]: value }));
   };
 
@@ -316,7 +316,7 @@ export default function BotInterface() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="accountType">Tipo de Conta</Label>
-                    <Select value={config.accountType} onValueChange={(value) => handleConfigChange('accountType', value)}>
+                    <Select value={config.accountType} onValueChange={(value: 'demo' | 'real') => handleConfigChange('accountType', value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -360,7 +360,7 @@ export default function BotInterface() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="strategy">Estratégia de Trading</Label>
-                    <Select value={config.strategy} onValueChange={(value) => handleConfigChange('strategy', value)}>
+                    <Select value={config.strategy} onValueChange={(value: 'mhi' | 'ema_rsi' | 'scalping') => handleConfigChange('strategy', value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
