@@ -451,12 +451,11 @@ export default function BotInterface() {
         setStats(prev => ({ ...prev, balance }));
         addLog(`💰 Saldo: $${balance} USD`);
         
-        if (!isRunning) {
-          debugLog("Ativando bot...");
-          setIsRunning(true);
-          addLog("✅ Bot ativo e coletando dados!");
-          setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
-        }
+        // CORREÇÃO: Forçar isRunning = true após receber saldo
+        debugLog("FORÇANDO isRunning = true");
+        setIsRunning(true);
+        addLog("✅ Bot ativo e coletando dados!");
+        setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
       }
 
       if (data.msg_type === "tick") {
@@ -506,18 +505,25 @@ export default function BotInterface() {
   const processTick = (tick: WebSocketMessage['tick'], ws: WebSocket) => {
     try {
       debugLog("Processando tick...", tick);
+      debugLog(`Estado atual: isRunning=${isRunning}, tick válido=${!!tick?.quote}`);
       
-      if (!tick || !tick.quote || !isRunning) {
-        debugLog("Tick inválido ou bot parado");
+      if (!tick || !tick.quote) {
+        debugLog("Tick inválido - sem quote");
         return;
       }
+      
+      // CORREÇÃO: Remover verificação de isRunning aqui, pois pode estar desatualizado
+      // if (!isRunning) {
+      //   debugLog("Bot não está rodando");
+      //   return;
+      // }
       
       const price = parseFloat(tick.quote.toString());
       const timestamp = Math.floor(Date.now() / 1000);
       const volume = tick.volume || 1;
       const now = Date.now();
       
-      debugLog(`Preço: ${price}, Volume: ${volume}`);
+      debugLog(`✅ Processando: Preço=${price}, Volume=${volume}`);
       
       // SEMPRE adicionar dados de preço
       const newPriceData = [...priceData, { high: price, low: price, close: price, timestamp }];
@@ -538,7 +544,7 @@ export default function BotInterface() {
       
       // Atualizar contador de dados
       setStats(prev => ({ ...prev, dataCount: newPriceData.length }));
-      debugLog(`Contador de dados atualizado: ${newPriceData.length}`);
+      debugLog(`✅ Contador de dados atualizado: ${newPriceData.length}`);
       
       // Log de progresso a cada 5 ticks
       if (newPriceData.length % 5 === 0) {
@@ -585,7 +591,7 @@ export default function BotInterface() {
       debugLog(`Dados necessários: ${minDataNeeded}, disponíveis: ${newPriceData.length}`);
       
       if (newPriceData.length >= minDataNeeded) {
-        debugLog("Iniciando análise de sinais...");
+        debugLog("✅ Iniciando análise de sinais...");
         setLastAnalysisTime(now);
         setAnalysisCount(prev => prev + 1);
         setStats(prev => ({ ...prev, status: "🔍 Analisando sinais..." }));
