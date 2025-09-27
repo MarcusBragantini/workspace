@@ -1,0 +1,1713 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bot MVB - Trading System</title>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  padding: 10px;
+  color: #333;
+}
+
+.container {
+  max-width: 500px;
+  margin: 0 auto;
+  background: #fff;
+  padding: 40px;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+  text-align: center;
+  margin-top: 15vh;
+}
+
+.logo {
+  font-size: 3rem;
+  margin-bottom: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.title {
+  font-size: 2rem;
+  color: #333;
+  margin-bottom: 10px;
+  font-weight: 300;
+}
+
+.subtitle {
+  color: #666;
+  margin-bottom: 40px;
+  font-size: 1.1rem;
+}
+
+.license-form {
+  margin: 30px 0;
+}
+
+.form-group {
+  margin: 20px 0;
+  text-align: left;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #555;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 15px;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border-color 0.3s ease;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* ESTILOS CORRIGIDOS PARA OS BOTÕES */
+.btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 15px 40px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin: 10px;
+  min-width: 120px;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+}
+
+.button-group {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 30px 0;
+}
+
+/* Botões específicos da interface do bot */
+.bot-interface .button-group button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 12px 25px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 120px;
+  box-shadow: 0 4px 10px rgba(102, 126, 234, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.bot-interface .button-group button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 15px rgba(102, 126, 234, 0.3);
+}
+
+.bot-interface .button-group button:active {
+  transform: translateY(0);
+}
+
+/* Cores específicas para diferentes tipos de botões */
+.bot-interface .button-group button:nth-child(1) { /* Iniciar */
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+}
+
+.bot-interface .button-group button:nth-child(2) { /* Parar */
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+}
+
+.bot-interface .button-group button:nth-child(3) { /* Teste */
+  background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+  color: #212529;
+}
+
+.bot-interface .button-group button:nth-child(4) { /* Reset */
+  background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+}
+
+.bot-interface .button-group button:nth-child(5) { /* Análise */
+  background: linear-gradient(135deg, #6f42c1 0%, #5a3596 100%);
+}
+
+.bot-interface .button-group button:nth-child(6) { /* Ajuda */
+  background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+}
+
+.license-info {
+  background: #f8f9fa;
+  border-radius: 10px;
+  padding: 20px;
+  margin: 20px 0;
+  text-align: left;
+  border: 1px solid #e9ecef;
+}
+
+.license-info h4 {
+  color: #495057;
+  margin-bottom: 15px;
+  font-size: 1.1rem;
+}
+
+.license-item {
+  margin: 10px 0;
+  padding: 8px 0;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.license-item:last-child {
+  border-bottom: none;
+}
+
+.license-key {
+  font-family: 'Courier New', monospace;
+  background: #e9ecef;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.status-message {
+  padding: 15px;
+  border-radius: 8px;
+  margin: 20px 0;
+  font-weight: bold;
+}
+
+.status-success {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.status-error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.bot-interface {
+  display: none;
+  max-width: 1400px;
+  margin: 20px auto;
+  background: #fff;
+  padding: 20px;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+  text-align: left;
+}
+
+.bot-interface.active {
+  display: block;
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Estilos do bot original */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.strategy-info {
+  background: #f0f8ff;
+  border: 2px solid #4a90e2;
+  border-radius: 12px;
+  padding: 15px;
+  margin: 20px 0;
+  text-align: center;
+}
+
+.indicators-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 15px 0;
+}
+
+.indicator-card {
+  background: #ffffff;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.indicator-value {
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin: 20px 0;
+}
+
+.status-card {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 12px;
+  text-align: center;
+  border: 2px solid #e9ecef;
+}
+
+.status-card h4 {
+  margin-bottom: 10px;
+  color: #666;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.status-value {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #333;
+}
+
+#log {
+  background: #1a1a1a;
+  color: #00ff41;
+  padding: 15px;
+  font-family: 'Courier New', monospace;
+  height: 300px;
+  overflow-y: auto;
+  border-radius: 8px;
+  margin: 20px 0;
+  border: 2px solid #333;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.history {
+  margin-top: 30px;
+}
+
+.table-container {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 20px;
+  overflow-x: auto;
+  border: 2px solid #e9ecef;
+}
+
+.history table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+.history th, .history td {
+  border: 1px solid #dee2e6;
+  padding: 12px 8px;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.history th {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+}
+
+.profit { color: #28a745; font-weight: bold; }
+.loss { color: #dc3545; font-weight: bold; }
+
+h2 {
+  text-align: center;
+  color: #333;
+  margin-bottom: 30px;
+  font-size: 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Sistema de Notificações Customizadas */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10000;
+  max-width: 400px;
+}
+
+.toast {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  margin-bottom: 15px;
+  padding: 20px;
+  border-left: 5px solid;
+  transform: translateX(100%);
+  opacity: 0;
+  transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  position: relative;
+  overflow: hidden;
+}
+
+.toast.show {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.toast.success {
+  border-left-color: #28a745;
+  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+}
+
+.toast.error {
+  border-left-color: #dc3545;
+  background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+}
+
+.toast.warning {
+  border-left-color: #ffc107;
+  background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+}
+
+.toast.info {
+  border-left-color: #17a2b8;
+  background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
+}
+
+.toast-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.toast-icon {
+  font-size: 1.5rem;
+  margin-right: 12px;
+}
+
+.toast-title {
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.toast-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.toast-close:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #333;
+}
+
+.toast-body {
+  color: #555;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.toast-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 0 0 12px 12px;
+  transition: width linear;
+}
+
+/* Modal Customizado */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.modal-overlay.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal {
+  background: white;
+  border-radius: 15px;
+  padding: 30px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  transform: scale(0.7);
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.modal-overlay.show .modal {
+  transform: scale(1);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.modal-icon {
+  font-size: 2.5rem;
+  margin-right: 15px;
+}
+
+.modal-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #333;
+}
+
+.modal-body {
+  color: #555;
+  line-height: 1.6;
+  margin-bottom: 25px;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 15px;
+  justify-content: flex-end;
+}
+
+.modal-btn {
+  padding: 12px 24px;
+  border-radius: 8px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.modal-btn.primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.modal-btn.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+}
+
+.modal-btn.secondary {
+  background: #6c757d;
+  color: white;
+}
+
+.modal-btn.secondary:hover {
+  background: #5a6268;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 30px 20px;
+    margin-top: 10vh;
+  }
+  
+  .bot-interface {
+    padding: 15px;
+    margin: 5px;
+  }
+  
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .toast-container {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+  
+  .modal {
+    margin: 20px;
+    padding: 25px;
+  }
+  
+  .button-group {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .bot-interface .button-group button {
+    width: 100%;
+    max-width: 250px;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- Tela de Licença -->
+<div class="container" id="licenseScreen">
+  <div class="logo">🤖</div>
+  <div class="title">Bot MVB</div>
+  <div class="subtitle">Sistema de Trading Automatizado</div>
+  
+  <div class="license-form">
+    <div class="form-group">
+      <label for="licenseKey">Insira sua Licença:</label>
+      <input type="text" id="licenseKey" placeholder="Digite sua chave de licença" maxlength="20">
+    </div>
+    
+    <button class="btn" onclick="_0x4d2a('validate')">Acessar Sistema</button>
+  </div>
+  
+  <div id="statusMessage"></div>
+</div>
+
+<!-- Sistema de Notificações -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Modal Customizado -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-icon" id="modalIcon">ℹ️</div>
+      <div class="modal-title" id="modalTitle">Informação</div>
+    </div>
+    <div class="modal-body" id="modalBody">
+      Conteúdo do modal
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn secondary" onclick="closeModal()">Fechar</button>
+      <button class="modal-btn primary" id="modalConfirm" onclick="closeModal()">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Interface do Bot -->
+<div class="bot-interface" id="botInterface">
+  <h2>🤖 Bot MVB - Estratégia MHI Avançada com Tendência</h2>
+
+  <div class="strategy-info">
+    <h3>📊 Estratégia Avançada com Análise de Tendência e Múltiplos Filtros</h3>
+    <p>Combina MHI tradicional com EMA, RSI, Volume e Análise de Tendência</p>
+    
+    <div class="indicators-grid">
+      <div class="indicator-card" id="indicator-mhi">
+        <h4>MHI Básico</h4>
+        <div class="indicator-value" id="mhiSignal">-</div>
+      </div>
+      <div class="indicator-card" id="indicator-trend">
+        <h4>Tendência</h4>
+        <div class="indicator-value" id="trendSignal">-</div>
+      </div>
+      <div class="indicator-card" id="indicator-ema">
+        <h4>EMA Rápida</h4>
+        <div class="indicator-value" id="emaSignal">-</div>
+      </div>
+      <div class="indicator-card" id="indicator-rsi">
+        <h4>RSI</h4>
+        <div class="indicator-value" id="rsiValue">-</div>
+      </div>
+      <div class="indicator-card" id="indicator-volume">
+        <h4>Volume Relativo</h4>
+        <div class="indicator-value" id="volumeSignal">-</div>
+      </div>
+      <div class="indicator-card" id="indicator-confidence">
+        <h4>Confiança</h4>
+        <div class="indicator-value" id="confidenceValue">-</div>
+      </div>
+      <div class="indicator-card" id="indicator-final">
+        <h4>Sinal Final</h4>
+        <div class="indicator-value" id="finalSignal">-</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-grid">
+    <div class="form-group">
+      <label>Token API:</label>
+      <input type="text" id="token" placeholder="Cole seu token da Deriv">
+    </div>
+
+    <div class="form-group">
+      <label>Entrada (USD):</label>
+      <input type="number" id="stake" value="1" min="1" max="1000" step="1">
+    </div>
+
+    <div class="form-group">
+      <label>Multiplicador Martingale:</label>
+      <input type="number" id="martingale" value="2" min="2" max="5" step="1">
+    </div>
+
+    <div class="form-group">
+      <label>Duração (minutos):</label>
+      <input type="number" id="duration" value="2" min="1" max="5">
+    </div>
+
+    <div class="form-group">
+      <label>Períodos MHI:</label>
+      <input type="number" id="mhiPeriods" value="20" min="5" max="50">
+    </div>
+
+    <div class="form-group">
+      <label>EMA Rápida:</label>
+      <input type="number" id="emaFast" value="8" min="5" max="20">
+    </div>
+
+    <div class="form-group">
+      <label>EMA Lenta (Tendência):</label>
+      <input type="number" id="emaSlow" value="18" min="15" max="50">
+    </div>
+
+    <div class="form-group">
+      <label>RSI Períodos:</label>
+      <input type="number" id="rsiPeriods" value="10" min="7" max="21">
+    </div>
+
+    <div class="form-group">
+      <label>Stop Win (lucro):</label>
+      <input type="number" id="stopWin" value="3" min="1" max="1000">
+    </div>
+
+    <div class="form-group">
+      <label>Stop Loss (prejuízo):</label>
+      <input type="number" id="stopLoss" value="-5" min="-1000" max="-1">
+    </div>
+
+    <div class="form-group">
+      <label>Mín. Confiança (%):</label>
+      <input type="number" id="minConfidence" value="75" min="50" max="90">
+    </div>
+
+    <div class="form-group">
+      <label>Símbolo:</label>
+      <select id="symbol">
+        <optgroup label="ÍNDICES">
+          <option value="R_10">Volatility 10 Index</option>
+          <option value="R_25">Volatility 25 Index</option>
+          <option value="R_50">Volatility 50 Index</option>
+          <option value="R_75">Volatility 75 Index</option>
+          <option value="R_100">Volatility 100 Index</option>
+        </optgroup>
+        <optgroup label="FOREX - Majors">
+          <option value="frxEURUSD">EUR/USD</option>
+          <option value="frxGBPUSD">GBP/USD</option>
+          <option value="frxUSDJPY">USD/JPY</option>
+          <option value="frxUSDCHF">USD/CHF</option>
+          <option value="frxAUDUSD">AUD/USD</option>
+          <option value="frxUSDCAD">USD/CAD</option>
+          <option value="frxNZDUSD">NZD/USD</option>
+        </optgroup>
+        
+        <optgroup label="FOREX - Minors">
+          <option value="frxEURGBP">EUR/GBP</option>
+          <option value="frxEURJPY">EUR/JPY</option>
+          <option value="frxEURCAD">EUR/CAD</option>
+          <option value="frxEURAUD">EUR/AUD</option>
+          <option value="frxGBPJPY">GBP/JPY</option>
+          <option value="frxGBPCHF">GBP/CHF</option>
+          <option value="frxAUDJPY">AUD/JPY</option>
+          <option value="frxCADJPY">CAD/JPY</option>
+        </optgroup>
+        
+        <optgroup label="CRYPTO">
+          <option value="BTCUSD">BTC/USD</option>
+          <option value="ETHUSD">ETH/USD</option>
+          <option value="LTCUSD">LTC/USD</option>
+          <option value="XRPUSD">XRP/USD</option>
+        </optgroup>
+        
+      </select>
+    </div>
+  </div>
+
+  <div class="button-group">
+    <button onclick="_0x8c5f('start')">▶ Iniciar Bot</button>
+    <button onclick="_0x8c5f('stop')">⏹ Parar</button>
+    <!--<button onclick="_0x8c5f('test')">🧪 Teste</button>-->
+    <!--<button onclick="_0x8c5f('reset')">🔄 Reset Martingale</button>-->
+    <!--<button onclick="_0x8c5f('analysis')">📈 Análise</button>-->
+    <button onclick="_0x8c5f('help')">❓ Ajuda</button>
+  </div>
+
+  <div class="status-grid">
+    <div class="status-card">
+      <h4>Status</h4>
+      <div class="status-value" id="status">⏳ Aguardando...</div>
+    </div>
+    <div class="status-card">
+      <h4>Saldo</h4>
+      <div class="status-value">💰 <span id="balance">0</span> USD</div>
+    </div>
+    <div class="status-card">
+      <h4>Lucro Acumulado</h4>
+      <div class="status-value" id="profit">0 USD</div>
+    </div>
+    <div class="status-card">
+      <h4>Assertividade</h4>
+      <div class="status-value" id="accuracy">0%</div>
+    </div>
+    <div class="status-card">
+      <h4>Dados Coletados</h4>
+      <div class="status-value" id="dataCount">0</div>
+    </div>
+    <div class="status-card">
+      <h4>Martingale</h4>
+      <div class="status-value" id="martingaleStatus">0/3</div>
+    </div>
+    <div class="status-card">
+      <h4>Entrada Atual</h4>
+      <div class="status-value" id="currentStake">1 USD</div>
+    </div>
+  </div>
+
+  <h3>📋 Log Detalhado</h3>
+  <div id="log"></div>
+
+  <div class="history">
+    <h3>📊 Histórico de Operações</h3>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Contrato</th>
+            <th>Sinal</th>
+            <th>Confiança</th>
+            <th>Entrada</th>
+            <th>Martingale</th>
+            <th>Resultado</th>
+            <th>Lucro</th>
+            <th>Hora</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== SISTEMA DE NOTIFICAÇÕES CUSTOMIZADAS =====
+function showToast(message, type = 'info', duration = 5000) {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    const toastId = 'toast_' + Date.now();
+    
+    const icons = {
+        success: '✅',
+        error: '❌', 
+        warning: '⚠️',
+        info: 'ℹ️'
+    };
+    
+    const titles = {
+        success: 'Sucesso',
+        error: 'Prejuízo',
+        warning: 'Atenção', 
+        info: 'Informação'
+    };
+    
+    toast.className = `toast ${type}`;
+    toast.id = toastId;
+    toast.innerHTML = `
+        <button class="toast-close" onclick="removeToast('${toastId}')">&times;</button>
+        <div class="toast-header">
+            <div class="toast-icon">${icons[type]}</div>
+            <div class="toast-title">${titles[type]}</div>
+        </div>
+        <div class="toast-body">${message}</div>
+        <div class="toast-progress" id="progress_${toastId}"></div>
+    `;
+    
+    container.appendChild(toast);
+    
+    // Animação de entrada
+    setTimeout(() => toast.classList.add('show'), 100);
+    
+    // Barra de progresso
+    const progress = document.getElementById(`progress_${toastId}`);
+    progress.style.width = '100%';
+    progress.style.transitionDuration = duration + 'ms';
+    setTimeout(() => {
+        if (progress) progress.style.width = '0%';
+    }, 100);
+    
+    // Auto-remover
+    setTimeout(() => removeToast(toastId), duration);
+}
+
+function removeToast(toastId) {
+    const toast = document.getElementById(toastId);
+    if (toast) {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 400);
+    }
+}
+
+function showModal(title, message, type = 'info', onConfirm = null) {
+    const overlay = document.getElementById('modalOverlay');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    const modalIcon = document.getElementById('modalIcon');
+    const confirmBtn = document.getElementById('modalConfirm');
+    
+    const icons = {
+        success: '✅',
+        error: '❌',
+        warning: '⚠️', 
+        info: 'ℹ️',
+        help: '❓'
+    };
+    
+    modalIcon.textContent = icons[type] || icons.info;
+    modalTitle.textContent = title;
+    modalBody.innerHTML = message;
+    
+    if (onConfirm) {
+        confirmBtn.onclick = () => {
+            closeModal();
+            onConfirm();
+        };
+        confirmBtn.textContent = 'Confirmar';
+    } else {
+        confirmBtn.onclick = closeModal;
+        confirmBtn.textContent = 'OK';
+    }
+    
+    overlay.classList.add('show');
+}
+
+function closeModal() {
+    const overlay = document.getElementById('modalOverlay');
+    overlay.classList.remove('show');
+}
+
+// Fechar modal clicando fora
+document.getElementById('modalOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'modalOverlay') {
+        closeModal();
+    }
+});
+
+// ===== SISTEMA DE LICENÇAS =====
+const _0x9b3e = {
+    'STANDARD-MVB-2025': {
+        _0x7f2a: 'standard',
+        _0x4e1c: 30,
+        _0x8d5b: ['all_features', 'premium_support']
+    },
+    'BASIC-MVB-7': {
+        _0x7f2a: 'basic', 
+        _0x4e1c: 7,
+        _0x8d5b: ['basic_features', 'email_support']
+    },
+    'FREE-MVB-24': {
+        _0x7f2a: 'free',
+        _0x4e1c: 1,
+        _0x8d5b: ['limited_features']
+    }
+};
+
+let _0x2a8c = false;
+let _0x5f1d = null;
+
+// ===== FUNÇÕES OFUSCADAS =====
+function _0x4d2a(_0x6e9f) {
+    if (_0x6e9f === 'validate') {
+        const _0x3c7b = document.getElementById('licenseKey').value.trim();
+        const _0x1f8e = _0x9b3e[_0x3c7b];
+        
+        if (!_0x1f8e) {
+            _0x9d4f('Licença inválida. Verifique sua chave de acesso.', 'error');
+            showToast('Chave de licença não encontrada. Verifique se digitou corretamente.', 'error');
+            return;
+        }
+        
+        const _0x8a2d = _0x7c3f();
+        const _0x4b6e = localStorage.getItem('mvb_device_' + _0x3c7b);
+        
+        if (_0x4b6e && _0x4b6e !== _0x8a2d) {
+            _0x9d4f('Esta licença já está em uso em outro dispositivo.', 'error');
+            showToast('Esta licença já está sendo utilizada em outro dispositivo.', 'warning');
+            return;
+        }
+        
+        localStorage.setItem('mvb_device_' + _0x3c7b, _0x8a2d);
+        
+        _0x2a8c = true;
+        _0x5f1d = _0x1f8e;
+        _0x6b1a();
+        
+        _0x9d4f('Acesso autorizado com sucesso!', 'success');
+        showToast(`Acesso liberado! Tipo: ${_0x1f8e._0x7f2a.toUpperCase()}`, 'success');
+    }
+}
+
+function _0x9d4f(_0x2e5a, _0x7d8c) {
+    const _0x3f6e = document.getElementById('statusMessage');
+    const _0x1c9b = _0x7d8c === 'error' ? 'status-error' : 'status-success';
+    _0x3f6e.innerHTML = `<div class="${_0x1c9b}">${_0x2e5a}</div>`;
+}
+
+function _0x7c3f() {
+    const _0x4a7e = [
+        navigator.userAgent,
+        navigator.language,
+        screen.width + 'x' + screen.height,
+        new Date().getTimezoneOffset()
+    ];
+    return btoa(_0x4a7e.join('|')).slice(0, 24);
+}
+
+function _0x6b1a() {
+    document.getElementById('licenseScreen').style.display = 'none';
+    document.getElementById('botInterface').classList.add('active');
+    _0x1e4f('Sistema iniciado com sucesso');
+    _0x1e4f(`Tipo de licença: ${_0x5f1d._0x7f2a.toUpperCase()}`);
+}
+
+// ===== BOT ORIGINAL OFUSCADO =====
+let _0xa8f3 = null;
+let _0xd6c2 = false;
+let _0x3e9a = 1;
+let _0x7b5c = 1;
+let _0xf2d8 = 2;
+let _0x4c1e = 10;
+let _0x8a7f = -10;
+let _0x9e3d = 0;
+let _0x6f8a = 1;
+let _0x2d5f = "frxEURUSD";
+let _0x7c3e = 14;
+let _0x4f2a = 9;
+let _0x8e6d = 21;
+let _0x1a9c = 14;
+let _0x5d7b = 70;
+
+let _0x3b8e = {
+    total: 0,
+    wins: 0,
+    losses: 0,
+    consecutiveWins: 0,
+    consecutiveLosses: 0
+};
+
+let _0x6d1f = 0;
+let _0x9c4a = 3;
+let _0x7e2b = [];
+let _0x8f5c = [];
+let _0x2f7e = false;
+let _0x4a1d = 0;
+let _0x6b8f = 60000;
+
+const _0x8d3c = [
+    "wss://ws.binaryws.com/websockets/v3",
+    "wss://ws.derivws.com/websockets/v3"
+];
+
+function _0x1e4f(_0x5a2e) {
+    const _0x7f8b = document.getElementById("log");
+    const _0x3e6d = new Date().toLocaleTimeString();
+    _0x7f8b.innerHTML += `[${_0x3e6d}] ${_0x5a2e}<br>`;
+    _0x7f8b.scrollTop = _0x7f8b.scrollHeight;
+}
+
+function _0x8c5f(_0x4d7a) {
+    if (!_0x2a8c) {
+        showToast('Acesso não autorizado. Insira uma licença válida.', 'warning');
+        return;
+    }
+    
+    if (_0x4d7a === 'start') {
+        _0x2f8d();
+    } else if (_0x4d7a === 'stop') {
+        _0x9e1c();
+    } else if (_0x4d7a === 'test') {
+        _0x6a5f();
+    } else if (_0x4d7a === 'reset') {
+        _0x4e8b();
+    } else if (_0x4d7a === 'analysis') {
+        _0x7d2a();
+    } else if (_0x4d7a === 'help') {
+        _0x3f9e();
+    }
+}
+
+function _0x2f8d() {
+    if (_0xd6c2) {
+        showToast("Bot já está em execução!", 'warning');
+        return;
+    }
+
+    const _0x5e2c = document.getElementById("token").value.trim();
+    if (!_0x5e2c) {
+        showToast("Token da Deriv é obrigatório para conectar!", 'error');
+        return;
+    }
+
+    _0x7b5c = Math.round(parseFloat(document.getElementById("stake").value) || 1);
+    _0x3e9a = _0x7b5c;
+    _0xf2d8 = Math.round(parseFloat(document.getElementById("martingale").value) || 2);
+    _0x4c1e = parseFloat(document.getElementById("stopWin").value) || 10;
+    _0x8a7f = parseFloat(document.getElementById("stopLoss").value) || -10;
+    _0x6f8a = parseInt(document.getElementById("duration").value) || 1;
+    _0x2d5f = document.getElementById("symbol").value;
+    _0x7c3e = parseInt(document.getElementById("mhiPeriods").value) || 14;
+    _0x4f2a = parseInt(document.getElementById("emaFast").value) || 9;
+    _0x8e6d = parseInt(document.getElementById("emaSlow").value) || 21;
+    _0x1a9c = parseInt(document.getElementById("rsiPeriods").value) || 14;
+    _0x5d7b = parseInt(document.getElementById("minConfidence").value) || 70;
+
+    _0x7e2b = [];
+    _0x8f5c = [];
+    _0x2f7e = false;
+    _0x6d1f = 0;
+    _0x4a1d = 0;
+    _0x3b8e = { total: 0, wins: 0, losses: 0, consecutiveWins: 0, consecutiveLosses: 0 };
+    _0x9e3d = 0;
+
+    _0x1e4f(`🚀 Iniciando Bot - Par: ${_0x2d5f} | Entrada: ${_0x7b5c} | Martingale: ${_0xf2d8}x`);
+    document.getElementById("status").innerText = "🔄 Conectando...";
+    showToast(`Bot iniciado! Monitorando ${_0x2d5f}`, 'success', 4000);
+    _0x5c8d();
+    _0x8b3f();
+    _0x2e7c();
+    document.getElementById("profit").innerText = "0 USD";
+
+    _0xa8f3 = _0x1f6e(_0x5e2c);
+}
+
+function _0x1f6e(_0x3d2a, _0x7e5f = 0) {
+    if (_0x7e5f >= _0x8d3c.length) {
+        _0x1e4f("❌ Todos os endpoints falharam.");
+        return null;
+    }
+
+    const _0x4b7c = _0x8d3c[_0x7e5f] + "?app_id=1089";
+    
+    try {
+        const _0x6f3e = new WebSocket(_0x4b7c);
+        
+        _0x6f3e.onopen = () => {
+            _0x1e4f("✅ WebSocket conectado!");
+            document.getElementById("status").innerText = "🔐 Autenticando...";
+            _0x6f3e.send(JSON.stringify({ authorize: _0x3d2a }));
+        };
+
+        _0x6f3e.onmessage = (_0x2c8f) => {
+            _0x9a4d(_0x2c8f, _0x6f3e);
+        };
+
+        _0x6f3e.onclose = (_0x5e7a) => {
+            if (!_0x5e7a.wasClean && _0xd6c2) {
+                _0x1e4f("🔴 Conexão perdida. Reconectando...");
+                setTimeout(() => _0x1f6e(_0x3d2a, _0x7e5f + 1), 2000);
+            }
+        };
+
+        _0x6f3e.onerror = (_0x8c2d) => {
+            _0x1e4f(`❌ Erro de conexão.`);
+        };
+
+        return _0x6f3e;
+    } catch (_0x7f4b) {
+        _0x1e4f(`❌ Erro ao criar WebSocket`);
+        return null;
+    }
+}
+
+function _0x9a4d(_0x5d3a, _0x8f6c) {
+    try {
+        const _0x2e9f = JSON.parse(_0x5d3a.data);
+
+        if (_0x2e9f.error) {
+            _0x1e4f(`❌ ERRO: ${_0x2e9f.error.message}`);
+            if (_0x2e9f.error.code === 'InvalidToken') {
+                document.getElementById("status").innerText = "❌ Token Inválido";
+                _0x9e1c();
+            }
+            return;
+        }
+
+        if (_0x2e9f.msg_type === "authorize") {
+            _0x1e4f("🔐 Autenticado com sucesso!");
+            _0x8f6c.send(JSON.stringify({ balance: 1, subscribe: 1 }));
+            _0x8f6c.send(JSON.stringify({ ticks: _0x2d5f, subscribe: 1 }));
+            _0x1e4f(`📊 Monitorando: ${_0x2d5f}`);
+        }
+
+        if (_0x2e9f.msg_type === "balance") {
+            const _0x4c7e = _0x2e9f.balance?.balance || 0;
+            document.getElementById("balance").innerText = _0x4c7e;
+            _0x1e4f(`💰 Saldo: $${_0x4c7e} USD`);
+            
+            if (!_0xd6c2) {
+                _0xd6c2 = true;
+                _0x1e4f("✅ Bot ativo e analisando!");
+                document.getElementById("status").innerText = "📊 Analisando...";
+            }
+        }
+
+        if (_0x2e9f.msg_type === "tick") {
+            _0x7a8c(_0x2e9f.tick);
+        }
+
+        if (_0x2e9f.msg_type === "proposal") {
+            _0x1e4f(`📋 Proposta recebida`);
+            const _0x9b5d = { buy: _0x2e9f.proposal.id, price: _0x3e9a };
+            _0x8f6c.send(JSON.stringify(_0x9b5d));
+        }
+
+        if (_0x2e9f.msg_type === "buy") {
+            if (_0x2e9f.buy.error) {
+                _0x1e4f(`❌ Erro na compra: ${_0x2e9f.buy.error.message}`);
+                _0x2f7e = false;
+                return;
+            }
+            
+            _0x1e4f(`✅ Contrato ID: ${_0x2e9f.buy.contract_id}`);
+            _0x8f6c.send(JSON.stringify({ 
+                proposal_open_contract: 1, 
+                subscribe: 1, 
+                contract_id: _0x2e9f.buy.contract_id 
+            }));
+        }
+
+        if (_0x2e9f.msg_type === "proposal_open_contract") {
+            const _0x3f8e = _0x2e9f.proposal_open_contract;
+            if (_0x3f8e.is_sold) {
+                _0x4d8f(_0x3f8e);
+            }
+        }
+
+    } catch (_0x6b2d) {
+        _0x1e4f(`❌ Erro processando mensagem: ${_0x6b2d.message}`);
+    }
+}
+
+function _0x4d8f(_0x8c6e) {
+    const _0x5f2a = _0x8c6e.profit;
+    const _0x7d4b = document.getElementById("finalSignal").textContent;
+    const _0x2e8c = document.getElementById("confidenceValue").textContent.replace('%', '') || "0";
+
+    _0x9e3d += _0x5f2a;
+    document.getElementById("profit").innerText = _0x9e3d.toFixed(2) + " USD";
+
+    _0x3b8e.total++;
+    if (_0x5f2a >= 0) {
+        _0x3b8e.wins++;
+        _0x3b8e.consecutiveWins++;
+        _0x3b8e.consecutiveLosses = 0;
+    } else {
+        _0x3b8e.losses++;
+        _0x3b8e.consecutiveLosses++;
+        _0x3b8e.consecutiveWins = 0;
+    }
+    _0x8b3f();
+
+    _0x6c7d(_0x8c6e.contract_id, _0x7d4b, _0x2e8c, _0x3e9a, _0x6d1f, _0x5f2a >= 0 ? "WIN" : "LOSS", _0x5f2a);
+
+    _0x1e4f(`📊 Resultado: ${_0x5f2a >= 0 ? 'WIN' : 'LOSS'} | Entrada: ${_0x3e9a} | Lucro: ${_0x5f2a.toFixed(2)} USD`);
+    
+    // Notificação visual do resultado
+    if (_0x5f2a >= 0) {
+        showToast(`🎉 WIN! Lucro: +${_0x5f2a.toFixed(2)}`, 'success', 4000);
+    } else {
+        showToast(`📉 Loss: ${_0x5f2a.toFixed(2)}`, 'error', 4000);
+    }
+
+    if (_0x5f2a < 0) {
+        _0x6d1f++;
+        _0x1e4f(`🔴 Perda ${_0x6d1f}/3`);
+        
+        const _0x9f3b = _0xa5c8();
+        
+        if (_0x2b6f(_0x9f3b)) {
+            _0x3e9a = _0x9f3b;
+            _0x1e4f(`📈 Nova entrada: $${_0x3e9a} ($${_0x3e9a/_0xf2d8} × ${_0xf2d8})`);
+        } else {
+            _0x6d1f = 0;
+            _0x3e9a = _0x7b5c;
+            _0x1e4f("🔄 Martingale resetado (limite máximo)");
+        }
+    } else {
+        _0x6d1f = 0;
+        _0x3e9a = _0x7b5c;
+        _0x1e4f(`✅ WIN! Reset para entrada inicial: $${_0x3e9a}`);
+    }
+
+    _0x5c8d();
+
+    if (_0x9e3d >= _0x4c1e) {
+        _0x1e4f("🎯 STOP WIN atingido! Parando bot.");
+        showToast(`🎯 Stop Win atingido! Lucro total: ${_0x9e3d.toFixed(2)}`, 'success', 6000);
+        _0x9e1c();
+    } else if (_0x9e3d <= _0x8a7f) {
+        _0x1e4f("💀 STOP LOSS atingido! Parando bot.");
+        showToast(`⛔ Stop Loss atingido! Prejuízo: ${_0x9e3d.toFixed(2)}`, 'error', 6000);
+        _0x9e1c();
+    } else {
+        _0x1e4f("🔄 Aguardando próximo sinal...");
+        document.getElementById("status").innerText = "📊 Analisando...";
+        _0x2f7e = false;
+        _0x4a1d = Date.now();
+    }
+}
+
+function _0xa5c8() {
+    const _0x7e3d = _0x3e9a * _0xf2d8;
+    const _0x4b8f = parseFloat(document.getElementById("balance").textContent) || 100;
+    
+    const _0x9c2e = {
+        maxMartingale: _0x7b5c * Math.pow(_0xf2d8, 3),
+        maxBalancePercent: _0x4b8f * 0.3,
+        minStake: 1
+    };
+    
+    let _0x6a1d = Math.min(_0x7e3d, _0x9c2e.maxMartingale, _0x9c2e.maxBalancePercent);
+    _0x6a1d = Math.max(_0x6a1d, _0x9c2e.minStake);
+    _0x6a1d = Math.round(_0x6a1d);
+    
+    return _0x6a1d;
+}
+
+function _0x2b6f(_0x8d5e) {
+    const _0x3f7a = parseFloat(document.getElementById("balance").textContent) || 100;
+    
+    if (_0x6d1f >= _0x9c4a) {
+        _0x1e4f("🚫 Máximo de 3 martingales atingido!");
+        return false;
+    }
+    
+    if (_0x8d5e > _0x3f7a * 0.5) {
+        _0x1e4f(`⚠️ Stake muito alto para o saldo!`);
+        return false;
+    }
+    
+    return true;
+}
+
+function _0x5c8d() {
+    document.getElementById("martingaleStatus").textContent = `${_0x6d1f}/${_0x9c4a}`;
+    document.getElementById("currentStake").textContent = `$${_0x3e9a}`;
+}
+
+function _0x8b3f() {
+    if (_0x3b8e.total > 0) {
+        const _0x7c2f = ((_0x3b8e.wins / _0x3b8e.total) * 100).toFixed(1);
+        document.getElementById("accuracy").textContent = `${_0x7c2f}%`;
+    }
+}
+
+function _0x2e7c() {
+    document.getElementById("dataCount").textContent = _0x7e2b.length;
+}
+
+function _0x6c7d(_0x9f4e, _0x8a3d, _0x5c7b, _0x2f6a, _0x7e9c, _0x4b1f, _0x8d7e) {
+    const _0x3e5c = document.getElementById("historyBody");
+    const _0x6f8d = document.createElement("tr");
+    const _0x1a7e = new Date().toLocaleTimeString();
+    
+    _0x6f8d.innerHTML = `
+        <td>${_0x9f4e}</td>
+        <td class="${_0x8a3d === 'CALL' ? 'call-signal' : 'put-signal'}">${_0x8a3d}</td>
+        <td>${_0x5c7b}%</td>
+        <td>$${_0x2f6a}</td>
+        <td>${_0x7e9c}/3</td>
+        <td class="${_0x8d7e >= 0 ? 'profit' : 'loss'}">${_0x4b1f}</td>
+        <td class="${_0x8d7e >= 0 ? 'profit' : 'loss'}">${_0x8d7e.toFixed(2)}</td>
+        <td>${_0x1a7e}</td>
+    `;
+    _0x3e5c.prepend(_0x6f8d);
+}
+
+function _0x7a8c(_0x4e5f) {
+    try {
+        if (!_0x4e5f || !_0x4e5f.quote) {
+            _0x1e4f("⚠️ Tick inválido recebido");
+            return;
+        }
+        
+        const _0x9c8a = parseFloat(_0x4e5f.quote);
+        const _0x7f3e = Math.floor(Date.now() / 1000);
+        const _0x5a6d = _0x4e5f.volume || 1;
+        
+        const _0x8c4f = Date.now() - _0x4a1d;
+        if (_0x8c4f < _0x6b8f && _0x4a1d > 0) return;
+        
+        _0x7e2b.push({ high: _0x9c8a, low: _0x9c8a, close: _0x9c8a, timestamp: _0x7f3e });
+        _0x8f5c.push(_0x5a6d);
+        
+        const _0x3d7c = Math.max(_0x7c3e, _0x8e6d, _0x1a9c) * 2;
+        if (_0x7e2b.length > _0x3d7c) {
+            _0x7e2b = _0x7e2b.slice(-_0x3d7c);
+            _0x8f5c = _0x8f5c.slice(-_0x3d7c);
+        }
+        
+        _0x2e7c();
+        
+        if (_0x7e2b.length >= Math.max(_0x7c3e, _0x8e6d, _0x1a9c) && _0xd6c2 && !_0x2f7e) {
+            const _0x6b4d = _0x9f7a(_0x7e2b, _0x8f5c);
+            
+            if (_0x6b4d && _0x6b4d.finalSignal !== "NEUTRO" && _0x6b4d.confidence >= _0x5d7b) {
+                _0x4c8e(_0x6b4d.signals, _0x6b4d.confidence);
+                
+                _0x1e4f(`🎯 SINAL: ${_0x6b4d.finalSignal} (${_0x6b4d.confidence}%)`);
+                showToast(`🎯 Sinal detectado: ${_0x6b4d.finalSignal} com ${_0x6b4d.confidence}% de confiança`, 'info', 4000);
+                
+                _0x2f7e = true;
+                _0x7d6f(_0x6b4d.finalSignal);
+            }
+        }
+    } catch (_0x8f2c) {
+        _0x1e4f(`❌ Erro processando tick: ${_0x8f2c.message}`);
+    }
+}
+
+function _0x9f7a(_0x5e8b, _0x7c1f) {
+    try {
+        if (!_0x5e8b || _0x5e8b.length < Math.max(_0x7c3e, _0x8e6d, _0x1a9c)) {
+            return null;
+        }
+        
+        const _0x4d2c = _0x5e8b.slice(-_0x7c3e);
+        
+        let _0x8f3a = 0, _0x6c5e = 0, _0x9a7d = 0;
+        _0x4d2c.forEach(_0x2b8f => {
+            _0x8f3a += _0x2b8f.high;
+            _0x6c5e += _0x2b8f.low;
+            _0x9a7d += _0x2b8f.close;
+        });
+        
+        const _0x5c3f = _0x8f3a / _0x7c3e;
+        const _0x7e4a = _0x6c5e / _0x7c3e;
+        const _0x8d6b = _0x4d2c[_0x4d2c.length - 1].close;
+        
+        let _0x3f5c = "NEUTRO";
+        if (_0x8d6b > _0x5c3f) {
+            _0x3f5c = "CALL";
+        } else if (_0x8d6b < _0x7e4a) {
+            _0x3f5c = "PUT";
+        }
+        
+        const _0x6a2d = _0x8c7f(_0x5e8b, _0x4f2a);
+        const _0x9e5a = _0x8c7f(_0x5e8b, _0x8e6d);
+        
+        let _0x7c8e = "NEUTRO";
+        if (_0x6a2d > _0x9e5a && _0x8d6b > _0x6a2d) {
+            _0x7c8e = "CALL";
+        } else if (_0x6a2d < _0x9e5a && _0x8d6b < _0x6a2d) {
+            _0x7c8e = "PUT";
+        }
+        
+        const _0x4b7f = _0x5f6c(_0x5e8b, _0x1a9c);
+        let _0x8e3c = "NEUTRO";
+        if (_0x4b7f < 30) {
+            _0x8e3c = "CALL";
+        } else if (_0x4b7f > 70) {
+            _0x8e3c = "PUT";
+        }
+        
+        const _0x9d2a = {
+            mhi: _0x3f5c,
+            trend: _0x7c8e,
+            ema: _0x8d6b > _0x6a2d ? "CALL" : "PUT",
+            rsi: _0x8e3c,
+            volume: "NEUTRO"
+        };
+        
+        const _0x6f4e = _0x3c8d(_0x9d2a);
+        const _0x8a1c = _0x7e9f(_0x9d2a, _0x4b7f);
+        
+        return {
+            signals: { ..._0x9d2a, final: _0x6f4e },
+            confidence: _0x8a1c,
+            finalSignal: _0x6f4e
+        };
+    } catch (_0x5d8f) {
+        _0x1e4f(`❌ Erro no cálculo MHI: ${_0x5d8f.message}`);
+        return null;
+    }
+}
+
+function _0x8c7f(_0x6e4d, _0x9b2c) {
+    if (_0x6e4d.length < _0x9b2c) return 0;
+    const _0x5f8e = 2 / (_0x9b2c + 1);
+    let _0x7c6a = _0x6e4d.slice(0, _0x9b2c).reduce((_0x4e3f, _0x8d1c) => _0x4e3f + _0x8d1c.close, 0) / _0x9b2c;
+    for (let _0x2a5d = _0x9b2c; _0x2a5d < _0x6e4d.length; _0x2a5d++) {
+        _0x7c6a = (_0x6e4d[_0x2a5d].close - _0x7c6a) * _0x5f8e + _0x7c6a;
+    }
+    return _0x7c6a;
+}
+
+function _0x5f6c(_0x8b4e, _0x6d7c) {
+    if (_0x8b4e.length <= _0x6d7c) return 50;
+    let _0x9a3f = 0, _0x7e6d = 0;
+    for (let _0x4c2a = 1; _0x4c2a <= _0x6d7c; _0x4c2a++) {
+        const _0x8f5e = _0x8b4e[_0x8b4e.length - _0x4c2a].close - _0x8b4e[_0x8b4e.length - _0x4c2a - 1].close;
+        if (_0x8f5e > 0) _0x9a3f += _0x8f5e;
+        else _0x7e6d -= _0x8f5e;
+    }
+    const _0x5d4c = _0x9a3f / _0x6d7c;
+    const _0x8c3e = _0x7e6d / _0x6d7c;
+    if (_0x8c3e === 0) return 100;
+    const _0x6f9a = _0x5d4c / _0x8c3e;
+    return 100 - (100 / (1 + _0x6f9a));
+}
+
+function _0x3c8d(_0x9e6f) {
+    const _0x4a8c = { mhi: 0.3, trend: 0.3, ema: 0.2, rsi: 0.2, volume: 0.0 };
+    let _0x7f5d = 0, _0x8b1e = 0;
+    
+    Object.keys(_0x9e6f).forEach(_0x5c2d => {
+        if (_0x9e6f[_0x5c2d] === "CALL") _0x7f5d += _0x4a8c[_0x5c2d];
+        else if (_0x9e6f[_0x5c2d] === "PUT") _0x8b1e += _0x4a8c[_0x5c2d];
+    });
+    
+    if (_0x7f5d > _0x8b1e && _0x7f5d > 0.4) return "CALL";
+    if (_0x8b1e > _0x7f5d && _0x8b1e > 0.4) return "PUT";
+    return "NEUTRO";
+}
+
+function _0x7e9f(_0x6d4e, _0x9f3c) {
+    let _0x8a5f = 0;
+    Object.values(_0x6d4e).forEach(_0x7c1e => {
+        if (_0x7c1e !== "NEUTRO") _0x8a5f += 20;
+    });
+    if (_0x9f3c < 20 || _0x9f3c > 80) _0x8a5f += 10;
+    else if (_0x9f3c < 30 || _0x9f3c > 70) _0x8a5f += 5;
+    return Math.min(95, _0x8a5f);
+}
+
+function _0x4c8e(_0x5b7f, _0x8d3a) {
+    document.getElementById("mhiSignal").textContent = _0x5b7f.mhi || "-";
+    document.getElementById("trendSignal").textContent = _0x5b7f.trend || "-";
+    document.getElementById("emaSignal").textContent = _0x5b7f.ema || "-";
+    document.getElementById("rsiValue").textContent = _0x5b7f.rsi || "-";
+    document.getElementById("volumeSignal").textContent = _0x5b7f.volume || "-";
+    document.getElementById("finalSignal").textContent = _0x5b7f.final || "-";
+    
+    const _0x6f2c = document.getElementById("confidenceValue");
+    _0x6f2c.textContent = _0x8d3a ? `${_0x8d3a}%` : "-";
+}
+
+function _0x7d6f(_0x4e8d) {
+    if (!_0xa8f3 || _0xa8f3.readyState !== WebSocket.OPEN) {
+        _0x1e4f("❌ WebSocket não conectado!");
+        return;
+    }
+    
+    _0x1e4f(`🚀 EXECUTANDO: ${_0x4e8d} - $${_0x3e9a}`);
+    
+    const _0x9c5f = {
+        proposal: 1,
+        amount: _0x3e9a,
+        basis: "stake",
+        contract_type: _0x4e8d,
+        currency: "USD",
+        duration: _0x6f8a,
+        duration_unit: "m",
+        symbol: _0x2d5f
+    };
+
+    _0xa8f3.send(JSON.stringify(_0x9c5f));
+    document.getElementById("status").innerText = `🚀 ${_0x4e8d} - $${_0x3e9a}`;
+}
+
+function _0x6a5f() {
+    if (!_0xa8f3 || _0xa8f3.readyState !== WebSocket.OPEN) {
+        showToast("Conecte o bot primeiro antes de fazer testes!", 'warning');
+        return;
+    }
+    _0x1e4f("🧪 TESTE FORÇADO - CALL");
+    showToast("Executando teste de sinal CALL...", 'info', 3000);
+    _0x7d6f("CALL");
+}
+
+function _0x4e8b() {
+    _0x6d1f = 0;
+    _0x3e9a = _0x7b5c;
+    _0x5c8d();
+    _0x1e4f("🔄 Martingale resetado manualmente");
+    showToast("Martingale resetado para entrada inicial", 'info', 3000);
+}
+
+function _0x7d2a() {
+    if (_0x7e2b.length < 10) {
+        _0x1e4f("📊 Coletando dados...");
+        return;
+    }
+    const _0x8f4c = _0x9f7a(_0x7e2b, _0x8f5c);
+    if (_0x8f4c) {
+        _0x1e4f("📈 ANÁLISE COMPLETA DISPONÍVEL");
+        _0x1e4f(`🎯 Sinal: ${_0x8f4c.finalSignal} | Confiança: ${_0x8f4c.confidence}%`);
+    }
+}
+
+function _0x3f9e() {
+    const helpContent = `
+        <div style="text-align: left; line-height: 1.6;">
+            <h4 style="color: #667eea; margin-bottom: 15px;">📊 Estratégia MHI Avançada</h4>
+            <p><strong>•</strong> Combina MHI tradicional com EMA, RSI e análise de tendência</p>
+            <p><strong>•</strong> Requer dados suficientes para análise (mín. 14 períodos)</p>
+            <p><strong>•</strong> Confiança mínima configurável para filtrar sinais</p>
+            
+            <h4 style="color: #667eea; margin: 20px 0 15px 0;">⚙️ Configurações Principais</h4>
+            <p><strong>Token:</strong> Obtenha em <em>app.deriv.com</em> → API Token</p>
+            <p><strong>Entrada:</strong> Valor inicial do trade em USD</p>
+            <p><strong>Martingale:</strong> Multiplicador aplicado após loss</p>
+            <p><strong>Stops:</strong> Limites automáticos de lucro/prejuízo</p>
+            
+            <h4 style="color: #667eea; margin: 20px 0 15px 0;">🎯 Tipos de Sinal</h4>
+            <p><strong>CALL:</strong> Previsão de alta do preço</p>
+            <p><strong>PUT:</strong> Previsão de baixa do preço</p>
+            <p><strong>Confiança:</strong> Percentual de certeza do sinal</p>
+            
+            <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-top: 20px; border-left: 4px solid #ffc107;">
+                <strong>⚠️ Importante:</strong> Use apenas em conta DEMO para testes e aprendizado!
+            </div>
+        </div>
+    `;
+    
+    showModal('Ajuda - Bot MVB', helpContent, 'help');
+}
+
+function _0x9e1c() {
+    _0xd6c2 = false;
+    _0x2f7e = false;
+    
+    if (_0xa8f3 && _0xa8f3.readyState === WebSocket.OPEN) {
+        try {
+            _0xa8f3.send(JSON.stringify({ forget_all: "ticks" }));
+            _0xa8f3.send(JSON.stringify({ forget_all: "proposal_open_contract" }));
+            
+            setTimeout(() => {
+                _0xa8f3.close();
+            }, 500);
+        } catch (_0x7c4f) {
+            _0xa8f3.close();
+        }
+    }
+    
+    _0x1e4f("⏹ Bot parado com sucesso!");
+    document.getElementById("status").innerText = "⏹ Parado";
+    showToast("Bot parado com sucesso", 'info', 3000);
+}
+
+// ===== INICIALIZAÇÃO =====
+window.onload = function() {
+    // Verificar se já está autenticado
+    const _0x8f6d = localStorage.getItem('mvb_session_2025');
+    if (_0x8f6d) {
+        try {
+            const _0x4c7a = JSON.parse(atob(_0x8f6d));
+            if (_0x4c7a.expires > Date.now()) {
+                _0x2a8c = true;
+                _0x5f1d = _0x4c7a.license;
+                _0x6b1a();
+            }
+        } catch (_0x9e3f) {
+            localStorage.removeItem('mvb_session_2025');
+        }
+    }
+};
+
+// ===== PROTEÇÕES =====
+(function() {
+    'use strict';
+    
+    function _0x9c8f() {
+        const _0x4e2d = performance.now();
+        debugger;
+        if (performance.now() - _0x4e2d > 100) {
+            location.reload();
+        }
+    }
+    setInterval(_0x9c8f, 3000);
+    
+    document.addEventListener('keydown', (_0x7f5a) => {
+        if (_0x7f5a.key === 'F12' || 
+            (_0x7f5a.ctrlKey && _0x7f5a.shiftKey && _0x7f5a.key === 'I') ||
+            (_0x7f5a.ctrlKey && _0x7f5a.key === 'u')) {
+            _0x7f5a.preventDefault();
+            return false;
+        }
+    });
+    
+    document.addEventListener('contextmenu', _0x6e8c => _0x6e8c.preventDefault());
+})();
+</script>
+</body>
+</html>
