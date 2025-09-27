@@ -410,11 +410,13 @@ export default function BotInterface() {
         setStats(prev => ({ ...prev, balance }));
         addLog(`💰 Saldo: $${balance} USD`);
         
-        // CORREÇÃO: Forçar isRunning = true após receber saldo
-        debugLog("FORÇANDO isRunning = true");
-        setIsRunning(true);
-        addLog("✅ Bot ativo e coletando dados!");
-        setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
+        // CORREÇÃO CRÍTICA: Garantir que isRunning seja true após receber saldo
+        if (!isRunning) {
+          debugLog("🔧 CORREÇÃO: Forçando isRunning = true após receber saldo");
+          setIsRunning(true);
+          addLog("✅ Bot ativo e coletando dados!");
+          setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
+        }
       }
 
       if (data.msg_type === "tick") {
@@ -478,105 +480,118 @@ export default function BotInterface() {
       
       debugLog(`✅ Processando: Preço=${price}, Volume=${volume}`);
       
-      // SEMPRE adicionar dados de preço
-      const newPriceData = [...priceData, { high: price, low: price, close: price, timestamp }];
-      const newVolumeData = [...volumeData, volume];
-      
-      debugLog(`Dados antes: ${priceData.length}, depois: ${newPriceData.length}`);
-      
-      // Manter apenas dados necessários
-      const maxDataPoints = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods) * 2;
-      if (newPriceData.length > maxDataPoints) {
-        setPriceData(newPriceData.slice(-maxDataPoints));
-        setVolumeData(newVolumeData.slice(-maxDataPoints));
-        debugLog(`Dados limitados a ${maxDataPoints}`);
-      } else {
-        setPriceData(newPriceData);
-        setVolumeData(newVolumeData);
-      }
-      
-      // Atualizar contador de dados
-      setStats(prev => ({ ...prev, dataCount: newPriceData.length }));
-      debugLog(`✅ Contador de dados atualizado: ${newPriceData.length}`);
-      
-      // Log de progresso a cada 5 ticks
-      if (newPriceData.length % 5 === 0) {
-        addLog(`📈 Dados coletados: ${newPriceData.length} | Preço: ${price.toFixed(4)}`);
-      }
+      // CORREÇÃO CRÍTICA: Usar setPriceData com callback para garantir estado atualizado
+      setPriceData(currentPriceData => {
+        const newPriceData = [...currentPriceData, { high: price, low: price, close: price, timestamp }];
+        debugLog(`Dados antes: ${currentPriceData.length}, depois: ${newPriceData.length}`);
+        
+        // Manter apenas dados necessários
+        const maxDataPoints = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods) * 2;
+        const finalPriceData = newPriceData.length > maxDataPoints ? 
+          newPriceData.slice(-maxDataPoints) : newPriceData;
+        
+        // Atualizar contador de dados
+        setStats(prev => ({ ...prev, dataCount: finalPriceData.length }));
+        debugLog(`✅ Contador de dados atualizado: ${finalPriceData.length}`);
+        
+        // Log de progresso a cada 5 ticks
+        if (finalPriceData.length % 5 === 0) {
+          addLog(`📈 Dados coletados: ${finalPriceData.length} | Preço: ${price.toFixed(4)}`);
+        }
 
-      // Controles de tempo para ANÁLISE
-      const timeSinceLastTrade = now - lastTradeTime;
-      const timeSinceLastAnalysis = now - lastAnalysisTime;
-      
-      debugLog(`Tempo desde último trade: ${timeSinceLastTrade}ms, análise: ${timeSinceLastAnalysis}ms`);
-      
-      // Se está em trading, não analisar
-      if (isTrading) {
-        debugLog("Em trading, pulando análise");
-        return;
-      }
-      
-      // Se trade recente, aguardar
-      if (timeSinceLastTrade < MIN_TRADE_INTERVAL && lastTradeTime > 0) {
-        const remainingTime = Math.ceil((MIN_TRADE_INTERVAL - timeSinceLastTrade) / 1000);
-        if (remainingTime % 30 === 0) {
-          addLog(`⏳ Aguardando ${remainingTime}s para próximo trade...`);
-        }
-        return;
-      }
-      
-      // Se análise muito recente, aguardar
-      if (timeSinceLastAnalysis < MIN_ANALYSIS_INTERVAL) {
-        debugLog("Análise muito recente, aguardando");
-        return;
-      }
-      
-      // Se muitas análises por minuto, aguardar
-      if (analysisCount >= MAX_ANALYSIS_PER_MINUTE) {
-        if (analysisCount === MAX_ANALYSIS_PER_MINUTE) {
-          addLog(`⏳ Limite de análises por minuto atingido. Aguardando...`);
-        }
-        return;
-      }
-      
-      // Analisar sinais se temos dados suficientes
-      const minDataNeeded = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods);
-      debugLog(`Dados necessários: ${minDataNeeded}, disponíveis: ${newPriceData.length}`);
-      
-      if (newPriceData.length >= minDataNeeded) {
-        debugLog("✅ Iniciando análise de sinais...");
-        setLastAnalysisTime(now);
-        setAnalysisCount(prev => prev + 1);
-        setStats(prev => ({ ...prev, status: "🔍 Analisando sinais..." }));
-        
-        const analysis = analyzeSignals(newPriceData, newVolumeData);
-        debugLog("Resultado da análise:", analysis);
-        
-        if (analysis) {
-          updateSignalsDisplay(analysis.signals, analysis.confidence);
+        // CORREÇÃO: Verificar isRunning dentro do callback para garantir estado atual
+        if (isRunning) {
+          // Controles de tempo para ANÁLISE
+          const timeSinceLastTrade = now - lastTradeTime;
+          const timeSinceLastAnalysis = now - lastAnalysisTime;
           
-          if (analysis.finalSignal !== "NEUTRO" && analysis.confidence >= config.minConfidence) {
-            debugLog(`Sinal válido encontrado: ${analysis.finalSignal} (${analysis.confidence}%)`);
-            addLog(`🎯 SINAL: ${analysis.finalSignal} (${analysis.confidence}%)`);
-            toast({
-              title: "🎯 Sinal detectado!",
-              description: `${analysis.finalSignal} com ${analysis.confidence}% de confiança`,
-            });
-            
-            setIsTrading(true);
-            executeTrade(analysis.finalSignal, ws);
-          } else {
-            debugLog(`Sinal fraco: ${analysis.finalSignal} (${analysis.confidence}%)`);
-            addLog(`📊 Análise: ${analysis.finalSignal} (${analysis.confidence}%) - Aguardando sinal melhor...`);
-            setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
+          debugLog(`Tempo desde último trade: ${timeSinceLastTrade}ms, análise: ${timeSinceLastAnalysis}ms`);
+          
+          // Se está em trading, não analisar
+          if (isTrading) {
+            debugLog("Em trading, pulando análise");
+            return finalPriceData;
           }
+          
+          // Se trade recente, aguardar
+          if (timeSinceLastTrade < MIN_TRADE_INTERVAL && lastTradeTime > 0) {
+            const remainingTime = Math.ceil((MIN_TRADE_INTERVAL - timeSinceLastTrade) / 1000);
+            if (remainingTime % 30 === 0) {
+              addLog(`⏳ Aguardando ${remainingTime}s para próximo trade...`);
+            }
+            return finalPriceData;
+          }
+          
+          // Se análise muito recente, aguardar
+          if (timeSinceLastAnalysis < MIN_ANALYSIS_INTERVAL) {
+            debugLog("Análise muito recente, aguardando");
+            return finalPriceData;
+          }
+          
+          // Se muitas análises por minuto, aguardar
+          if (analysisCount >= MAX_ANALYSIS_PER_MINUTE) {
+            if (analysisCount === MAX_ANALYSIS_PER_MINUTE) {
+              addLog(`⏳ Limite de análises por minuto atingido. Aguardando...`);
+            }
+            return finalPriceData;
+          }
+          
+          // Analisar sinais se temos dados suficientes
+          const minDataNeeded = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods);
+          debugLog(`Dados necessários: ${minDataNeeded}, disponíveis: ${finalPriceData.length}`);
+          
+          if (finalPriceData.length >= minDataNeeded) {
+            debugLog("✅ Iniciando análise de sinais...");
+            setLastAnalysisTime(now);
+            setAnalysisCount(prev => prev + 1);
+            setStats(prev => ({ ...prev, status: "🔍 Analisando sinais..." }));
+            
+            // Usar setTimeout para não bloquear o estado
+            setTimeout(() => {
+              const analysis = analyzeSignals(finalPriceData, volumeData);
+              debugLog("Resultado da análise:", analysis);
+              
+              if (analysis) {
+                updateSignalsDisplay(analysis.signals, analysis.confidence);
+                
+                if (analysis.finalSignal !== "NEUTRO" && analysis.confidence >= config.minConfidence) {
+                  debugLog(`Sinal válido encontrado: ${analysis.finalSignal} (${analysis.confidence}%)`);
+                  addLog(`🎯 SINAL: ${analysis.finalSignal} (${analysis.confidence}%)`);
+                  toast({
+                    title: "🎯 Sinal detectado!",
+                    description: `${analysis.finalSignal} com ${analysis.confidence}% de confiança`,
+                  });
+                  
+                  setIsTrading(true);
+                  executeTrade(analysis.finalSignal, ws);
+                } else {
+                  debugLog(`Sinal fraco: ${analysis.finalSignal} (${analysis.confidence}%)`);
+                  addLog(`📊 Análise: ${analysis.finalSignal} (${analysis.confidence}%) - Aguardando sinal melhor...`);
+                  setStats(prev => ({ ...prev, status: "📊 Coletando dados..." }));
+                }
+              }
+            }, 100);
+          } else {
+            // Ainda coletando dados iniciais
+            const progress = Math.round((finalPriceData.length / minDataNeeded) * 100);
+            debugLog(`Progresso da coleta: ${progress}%`);
+            setStats(prev => ({ ...prev, status: `📊 Coletando dados... ${progress}%` }));
+          }
+        } else {
+          debugLog("⚠️ isRunning=false, não processando análise");
         }
-      } else {
-        // Ainda coletando dados iniciais
-        const progress = Math.round((newPriceData.length / minDataNeeded) * 100);
-        debugLog(`Progresso da coleta: ${progress}%`);
-        setStats(prev => ({ ...prev, status: `📊 Coletando dados... ${progress}%` }));
-      }
+        
+        return finalPriceData;
+      });
+
+      // Atualizar volume data
+      setVolumeData(currentVolumeData => {
+        const newVolumeData = [...currentVolumeData, volume];
+        const maxDataPoints = Math.max(config.mhiPeriods, config.emaSlow, config.rsiPeriods) * 2;
+        return newVolumeData.length > maxDataPoints ? 
+          newVolumeData.slice(-maxDataPoints) : newVolumeData;
+      });
+      
     } catch (error) {
       debugLog("Erro processando tick:", error);
       const err = error as Error;
