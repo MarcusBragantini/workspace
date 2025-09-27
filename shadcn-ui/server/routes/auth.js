@@ -1,45 +1,53 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const License = require('../models/License');
-const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Registro de usuário
+// Register
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { name, email, password } = req.body;
 
-    if (!email || !password || !name) {
-      return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
-    }
-
-    // Verificar se o usuário já existe
+    // Check if user exists
     const existingUser = await User.findByEmail(email);
     if (existingUser) {
-      return res.status(400).json({ error: 'Email já cadastrado' });
+      return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Criar usuário
-    const userId = await User.create({ email, password, name });
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Criar licença gratuita de 7 dias
-    const license = await License.create({
-      user_id: userId,
-      license_type: 'free',
-      duration_days: 7,
-      max_devices: 1
+    // Create user
+    const userId = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      role: 'user'
     });
 
+    // Generate token
+    const token = jwt.sign(
+      { userId, email, role: 'user' },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    );
+
     res.status(201).json({
-      message: 'Usuário criado com sucesso',
-      user: { id: userId, email, name },
-      license: license.license_key
+      message: 'User created successfully',
+      token,
+      user: {
+        id: userId,
+        name,
+        email,
+        role: 'user'
+      }
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -48,83 +56,66 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email e senha são obrigatórios' });
-    }
-
+    // Find user
     const user = await User.findByEmail(email);
     if (!user) {
-      return res.status(401).json({ error: 'Credenciais inválidas' });
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    const isValidPassword = await User.validatePassword(password, user.password);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Credenciais inválidas' });
+    // Check password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    if (user.status !== 'active') {
-      return res.status(403).json({ error: 'Conta suspensa ou inativa' });
-    }
-
+    // Generate token
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
     );
 
     res.json({
+      message: 'Login successful',
       token,
       user: {
         id: user.id,
-        email: user.email,
         name: user.name,
+        email: user.email,
         role: user.role
       }
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Validar licença
-router.post('/validate-license', async (req, res) => {
+// Get current user
+router.get('/me', async (req, res) => {
   try {
-    const { license_key, device_fingerprint } = req.body;
-
-    if (!license_key || !device_fingerprint) {
-      return res.status(400).json({ error: 'Licença e identificação do dispositivo são obrigatórias' });
-    }
-
-    const validation = await License.validateLicense(license_key, device_fingerprint);
-
-    if (!validation.valid) {
-      return res.status(403).json({ error: validation.error });
-    }
-
-    res.json({
-      valid: true,
-      license: validation.license,
-      message: 'Licença válida'
-    });
-  } catch (error) {
-    console.error('License validation error:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// Obter perfil do usuário
-router.get('/profile', authenticateToken, async (req, res) => {
-  try {
-    const licenses = await License.getUserLicenses(req.user.id);
+    const token = req.header('Authorization')?.replace('Bearer ', '');
     
+    if (!token) {
+      return res.status(401).json({ message: 'No token, authorization denied' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const user = await User.findById(decoded.userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
     res.json({
-      user: req.user,
-      licenses
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role
     });
   } catch (error) {
-    console.error('Profile error:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('Auth error:', error);
+    res.status(401).json({ message: 'Token is not valid' });
   }
 });
 
